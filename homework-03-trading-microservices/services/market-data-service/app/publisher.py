@@ -28,7 +28,7 @@ class Publisher:
         for subscriber in subscribers:
             subscriber.put(data)
 
-    def stream_events(self):
+    def stream_events(self, initial_events=()):
         """SSE event generator - subscribe, yield events, unsubscribe on disconnect"""
         client_queue = queue.Queue()
         self.subscribe(client_queue)
@@ -36,6 +36,8 @@ class Publisher:
         print(f"Client subscribed. Active clients: {len(self.subscribers)}")
 
         try:
+            for event in initial_events:
+                yield f"data: {json.dumps(event)}\n\n".encode('utf-8')
             while True:
                 try:
                     event = client_queue.get(timeout=30)

@@ -4,6 +4,13 @@ import datetime
 import structlog
 from config import SERVICE_NAME
 
+# Rates curve (bonds, IRS) - tenors in years; yearly points up to 5Y cover annual IRS payments
+RATE_TENORS = {"1Y": 1, "2Y": 2, "3Y": 3, "4Y": 4, "5Y": 5, "7Y": 7, "10Y": 10, "20Y": 20, "30Y": 30}
+USD_BASE_RATES = [0.038, 0.040, 0.041, 0.0415, 0.042, 0.0425, 0.043, 0.044, 0.045]
+
+# FX forward curve - tenors in months
+FX_TENORS = {"1M": 1 / 12, "3M": 0.25, "6M": 0.5, "9M": 0.75, "1Y": 1.0}
+
 class Generator:
     def __init__(self, event_id):
         self.log = structlog.get_logger().bind(service=SERVICE_NAME)
@@ -154,3 +161,54 @@ class Generator:
         self.last_futures_price = actual_price
         self.log.info("generated_futures_data", data=data)
         return data
+
+    def build_curve(self, curve_name, curve_type, currency, tenors: dict, rates, event_time, **extra):
+        return {
+            "event_type": "CURVE",
+            "event_id": self.next_event_id(),
+            "timestamp": event_time,
+            "curve_name": curve_name,
+            "curve_type": curve_type,
+            "currency": currency,
+            "tenors": list(tenors.keys()),
+            "year_fractions": [round(t, 6) for t in tenors.values()],
+            "rates": rates,
+            **extra,
+        }
+
+    def generate_curves(self):
+        """Generate USD yield/discount curves and EUR/USD forward curve (on startup / on demand)"""
+        event_time = datetime.datetime.now().isoformat()
+
+        shift = random.uniform(-0.005, 0.005)
+        yields = [round(r + shift, 5) for r in USD_BASE_RATES]
+
+        discount_factors = [round(1 / (1 + r) ** t, 6) for r, t in zip(yields, RATE_TENORS.values())]
+
+        spot = self.last_forex_spot
+        domestic_rate = round(random.uniform(0.01, 0.05), 4)
+        foreign_rate = round(random.uniform(0.01, 0.05), 4)
+
+        forwards = [
+            round(spot * (1 + domestic_rate * t) / (1 + foreign_rate * t), 5)
+            for t in FX_TENORS.values()
+        ]
+
+        curves = [
+            self.build_curve(
+                "USD_YIELD", "YIELD_CURVE", "USD", RATE_TENORS, yields, event_time,
+                compounding="ANNUAL",
+            ),
+            self.build_curve(
+                "USD_DISCOUNT", "DISCOUNT_CURVE", "USD", RATE_TENORS, discount_factors, event_time,
+                compounding="ANNUAL", source_curve="USD_YIELD",
+            ),
+            self.build_curve(
+                "EUR/USD_FWD", "FX_FORWARD_CURVE", "USD", FX_TENORS, forwards, event_time,
+                pair="EUR/USD", spot=spot, domestic_rate=domestic_rate, foreign_rate=foreign_rate,
+                forward_points=[round((f - spot) * 10000, 1) for f in forwards],
+            ),
+        ]
+
+        self.log.info("generated_curves", curves=[c["curve_name"] for c in curves])
+        return curves

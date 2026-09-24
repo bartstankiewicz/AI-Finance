@@ -53,15 +53,30 @@ def push_data_to_db(persistence):
         time.sleep(10)
 
 
+def refresh_curves(generator, persistence, publisher, latest_curves: dict):
+    curves = generator.generate_curves()
+    for curve in curves:
+        persistence.add_curve(curve)
+        latest_curves[curve["curve_name"]] = curve
+        publisher.publish_data(curve)
+    persistence.push_curves()
+    return curves
+
+
 if __name__ == '__main__':
     latest_data = {}
+    latest_curves = {}
 
     executor = ThreadPoolExecutor(max_workers=5)
     publisher = Publisher()
     persistence = Persistence()
     last_event_id = persistence.get_last_event_id()
     generator = Generator(last_event_id)
-    app = MarketDataApi(publisher, latest_data)
+    refresh_curves(generator, persistence, publisher, latest_curves)
+    app = MarketDataApi(
+        publisher, latest_data, latest_curves,
+        refresh_curves=lambda: refresh_curves(generator, persistence, publisher, latest_curves),
+    )
 
     thread_market_ticks = threading.Thread(target=market_data_service, args=(generator, executor, publisher, persistence, latest_data), daemon=True)
     thread_market_ticks.start()

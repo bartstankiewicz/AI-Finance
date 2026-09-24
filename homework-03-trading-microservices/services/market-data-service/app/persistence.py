@@ -96,8 +96,9 @@ class Persistence:
     def get_last_event_id(self):
         """Get the last event ID"""
         with SessionFactory() as session:
-            max_event_id = session.query(func.max(MarketDataSpotPrices.event_id)).scalar()
-            if max_event_id is None:
-                max_event_id = 0
+            max_event_id = max(
+                session.query(func.max(MarketDataSpotPrices.event_id)).scalar() or 0,
+                session.query(func.max(MarketDataCurves.event_id)).scalar() or 0,
+            )
             print(f"Last event ID from DB: {max_event_id}")
             return max_event_id
