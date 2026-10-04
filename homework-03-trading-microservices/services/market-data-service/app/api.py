@@ -1,16 +1,20 @@
-from bottle import Bottle, response
+from bottle import Bottle, request, response
 from publisher import Publisher
+
+MAX_HISTORY_LIMIT = 2000
 
 
 class MarketDataApi(Bottle):
-    def __init__(self, publisher: Publisher, latest_data: dict, latest_curves: dict, refresh_curves):
+    def __init__(self, publisher: Publisher, latest_data: dict, latest_curves: dict, refresh_curves, get_history):
         super().__init__()
         self.publisher = publisher
         self.latest_data = latest_data
         self.latest_curves = latest_curves
         self.refresh_curves_callback = refresh_curves
+        self.get_history = get_history
         self.route('/health', method='GET', callback=self.health)
         self.route('/snapshot', method='GET', callback=self.snapshot)
+        self.route('/history', method='GET', callback=self.history)
         self.route('/stream', method='GET', callback=self.stream)
         self.route('/curves', method='GET', callback=self.curves)
         self.route('/curves/refresh', method='POST', callback=self.refresh_curves)
@@ -37,6 +41,15 @@ class MarketDataApi(Bottle):
         """Last snapshot requested"""
         return self.latest_data
 
+    def history(self):
+        """Persisted spot price history per symbol, so charts survive restarts"""
+        try:
+            limit = int(request.query.get('limit', 500)) # type: ignore[attr-defined]
+        except ValueError:
+            response.status = 400
+            return {"error": "limit must be an integer"}
+        return self.get_history(max(1, min(limit, MAX_HISTORY_LIMIT)))
+
     def curves(self):
         """Latest generated curves"""
         return self.latest_curves
@@ -50,4 +63,5 @@ class MarketDataApi(Bottle):
         """Stream requested"""
         response.content_type = "text/event-stream"
         response.set_header("Cache-Control", "no-cache")
-        return self.publisher.stream_events(initial_events=list(self.latest_curves.values()))
+        initial_events = [*self.latest_curves.values(), *self.latest_data.values()]
+        return self.publisher.stream_events(initial_events=initial_events)

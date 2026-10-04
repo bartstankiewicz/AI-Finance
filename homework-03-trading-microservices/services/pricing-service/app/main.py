@@ -19,7 +19,7 @@ from config import HOST, PORT, VALUATION_INTERVAL, SERVICE_NAME
 log = structlog.get_logger().bind(service=SERVICE_NAME)
 
 
-ASSET_CLASSES = ["EQUITY", "BOND", "FX", "COMMODITY", "FUTURES"]
+ASSET_CLASSES = ["EQUITY", "BOND", "FX", "COMMODITY", "FUTURES", "EUROPEAN_OPTION", "IRS"]
 
 
 def pricing_service_active_trades(pnl_service, persistence, publisher, executor):
@@ -30,6 +30,8 @@ def pricing_service_active_trades(pnl_service, persistence, publisher, executor)
             executor.submit(pnl_service.calculate_forex),
             executor.submit(pnl_service.calculate_commodity),
             executor.submit(pnl_service.calculate_futures),
+            executor.submit(pnl_service.calculate_eu_option),
+            executor.submit(pnl_service.calculate_irs),
         ]
         for task in tasks:
             try:
@@ -71,7 +73,7 @@ if __name__ == '__main__':
 
     market_data_client.start()
 
-    executor = ThreadPoolExecutor(max_workers=5)
+    executor = ThreadPoolExecutor(max_workers=7)
     thread_active = threading.Thread(target=pricing_service_active_trades, args=(pnl_service, persistence, publisher, executor), daemon=True)
     thread_active.start()
 

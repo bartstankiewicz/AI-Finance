@@ -8,6 +8,7 @@ class ValuationPublisher:
     def __init__(self):
         self.log = structlog.get_logger().bind(service=SERVICE_NAME)
         self.subscribers = []
+        self.latest_by_symbol = {}
         self.lock = threading.Lock()
 
     def subscribe(self, client_queue):
@@ -24,6 +25,7 @@ class ValuationPublisher:
     def publish_data(self, data):
         """Publish data to all subscribers"""
         with self.lock:
+            self.latest_by_symbol[data.get("symbol")] = data
             subscribers = list(self.subscribers)
         for subscriber in subscribers:
             subscriber.put(data)
@@ -32,9 +34,13 @@ class ValuationPublisher:
         """SSE event generator - subscribe, yield events, unsubscribe on disconnect"""
         client_queue = queue.Queue()
         self.subscribe(client_queue)
+        with self.lock:
+            initial_events = list(self.latest_by_symbol.values())
         self.log.info("client_subscribed", active_clients=len(self.subscribers))
 
         try:
+            for event in initial_events:
+                yield f"data: {json.dumps(event)}\n\n".encode('utf-8')
             while True:
                 try:
                     event = client_queue.get(timeout=30)

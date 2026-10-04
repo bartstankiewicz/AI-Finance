@@ -1,0 +1,28 @@
+@use '../../styles/variables' as *;
+
+.plot {
+  padding: $gap $gap * 1.5;
+  border-radius: $radius-lg;
+
+  &__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $gap;
+    margin-bottom: $gap;
+
+    h2 {
+      font-size: 1rem;
+    }
+  }
+
+  &__symbols {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  &__symbol {
+    min-width: 96px;
+  }
+}

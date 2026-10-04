@@ -95,7 +95,8 @@ class TradeActionRepository:
                 message=f"Trade closed with ID {trade_id}",
                 payload=close_data
             )
-            self.audit_repo.push_audit_logs(log_data, session)
+            if updated:
+                self.audit_repo.push_audit_logs(log_data, session)
 
             session.commit()
             return updated

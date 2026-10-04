@@ -1,0 +1,13 @@
+@use '../../styles/variables' as *;
+
+.generator-actions {
+  display: flex;
+  gap: $gap;
+
+  &__btn {
+    flex: 1;
+    min-height: 64px;
+    border-radius: $radius;
+    font-size: 0.95rem;
+  }
+}

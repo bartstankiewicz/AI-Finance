@@ -1,0 +1,13 @@
+@use '../../styles/variables' as *;
+
+.service-details__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.stream-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

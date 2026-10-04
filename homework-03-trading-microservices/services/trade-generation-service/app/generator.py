@@ -19,7 +19,9 @@ class TradeGenerator:
             self.generate_fixed_income_trade,
             self.generate_forex_trade,
             self.generate_commodity_trade,
-            self.generate_futures_trade
+            self.generate_futures_trade,
+            self.generate_eu_option_trade,
+            self.generate_irs_trade
         ])
 
         generated_trade = generate_trade()
@@ -49,7 +51,8 @@ class TradeGenerator:
         tick = self.market_data_client.get_price((active_trade["asset_class"], active_trade["symbol"]))
         if not tick:
             return None
-        close_price = tick.get("mid")
+
+        close_price = tick.get("mid") or tick.get("face_value")
 
         data = {
             "action_type": "CLOSE_TRADE",
@@ -95,7 +98,7 @@ class TradeGenerator:
         trade_data = self.market_data_client.get_price(fixed_income_description)
         if not trade_data:
             return None
-        trade_price = trade_data.get("mid")
+        trade_price = trade_data.get("face_value")
 
         book = self.book_client.get_book_for_asset_class("BOND")
         if not book:
@@ -194,4 +197,48 @@ class TradeGenerator:
             "trade_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         self.log.info("generated_futures_trade", data=data)
+        return data
+
+    def generate_eu_option_trade(self):
+        """Generate a trade for the European option asset class"""
+        eu_option_description = ("EQUITY", "ACME")
+        trade_data = self.market_data_client.get_price(eu_option_description)
+        if not trade_data:
+            return None
+        trade_price = round(trade_data.get("mid"), 1)
+
+        book = self.book_client.get_book_for_asset_class("EUROPEAN_OPTION")
+        if not book:
+            return None
+
+        quantity = random.randint(1, 1000)
+        strike = round(trade_price * random.choice([0.9, 1.0, 1.1]), 1)
+        volatility = round(random.uniform(0.1, 0.5), 2)
+        maturity_years = random.choice([0.25, 0.5, 1.0])
+
+        data = {
+            "asset_class": "EUROPEAN_OPTION",
+            "underlying_symbol": "ACME",
+            "quantity": quantity,
+            "side": random.choice(["BUY", "SELL"]),
+            "trade_price": trade_price,
+            "option_type": random.choice(["CALL", "PUT"]),
+            "strike": strike,
+            "volatility": volatility,
+            "trade_currency": "USD",
+            "book_id": book["book_id"],
+            "instrument_id": f"ACME_EU_OPTION_{strike}_{maturity_years}",
+            "maturity_years": maturity_years,
+            "trade_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        self.log.info("generated_eu_option_trade", data=data)
+        return data
+
+    def generate_irs_trade(self):
+        """Generate a trade for the Interest Rate Swap (IRS) asset class"""
+
+        data = {
+            "asset_class": "INTEREST_RATE_SWAP",
+        }
+        self.log.info("generated_irs_trade", data=data)
         return data

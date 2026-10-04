@@ -1,0 +1,51 @@
+@use '../styles/variables' as *;
+
+// Wrapper carries border + rounded corners; <table> inside scrolls horizontally when too wide
+.data-table {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid $color-border;
+  border-radius: $radius;
+  background: $color-surface;
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  th,
+  td {
+    padding: 10px 14px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  th {
+    background: $color-surface-2;
+    color: $color-muted;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  td {
+    border-top: 1px solid $color-border;
+    font-family: $font-mono;
+
+    &.data-table__empty {
+      color: $color-muted;
+      text-align: center;
+    }
+  }
+
+  td:first-child {
+    font-family: $font-family;
+    font-weight: 500;
+  }
+
+  tbody tr:hover td {
+    background: $color-surface-2;
+  }
+}

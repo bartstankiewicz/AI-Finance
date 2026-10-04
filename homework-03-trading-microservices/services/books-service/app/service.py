@@ -1,7 +1,7 @@
 import structlog
 from config import SERVICE_NAME
 
-VALID_ASSET_CLASSES = ["EQUITY", "BOND", "FX", "COMMODITY", "FUTURES"]
+VALID_ASSET_CLASSES = ["EQUITY", "BOND", "FX", "COMMODITY", "FUTURES", "EUROPEAN_OPTION", "IRS"]
 
 
 class BooksService:
@@ -80,6 +80,8 @@ class BooksService:
             {"name": "FX_BOOK_1", "expected_asset_class": "FX"},
             {"name": "COMMODITY_BOOK_1", "expected_asset_class": "COMMODITY"},
             {"name": "FUTURES_BOOK_1", "expected_asset_class": "FUTURES"},
+            {"name": "EUROPEAN_OPTION_BOOK_1", "expected_asset_class": "EUROPEAN_OPTION"},
+            {"name": "IRS_BOOK_1", "expected_asset_class": "IRS"},
         ]
         for book_data in default_books:
             try:

@@ -1,17 +1,19 @@
+import uuid
 from enum import Enum
+from datetime import timezone, datetime
 
 from shared.trading_shared.serialization import to_jsonable
 
 
 class AuditEventType(str, Enum):
-    BOOK_CREATED = "BOOK_CREATED" #DONE
-    BOOK_UPDATED = "BOOK_UPDATED" #DONE
-    BOOK_DELETED = "BOOK_DELETED" #DONE
-    BOOK_DEACTIVATED = "BOOK_DEACTIVATED" #DONE
+    BOOK_CREATED = "BOOK_CREATED"
+    BOOK_UPDATED = "BOOK_UPDATED"
+    BOOK_DELETED = "BOOK_DELETED"
+    BOOK_DEACTIVATED = "BOOK_DEACTIVATED"
 
-    TRADE_OPENED = "TRADE_OPENED" #DONE
-    TRADE_CLOSED = "TRADE_CLOSED" #DONE
-    TRADE_REJECTED = "TRADE_REJECTED" #DONE
+    TRADE_OPENED = "TRADE_OPENED"
+    TRADE_CLOSED = "TRADE_CLOSED"
+    TRADE_REJECTED = "TRADE_REJECTED"
 
     SNAPSHOT_TAKEN = "SNAPSHOT_TAKEN"
 
@@ -31,6 +33,8 @@ def build_audit_log(service_name, event_type, entity_id, message, entity_type=No
                        severity=AuditSeverity.INFO, payload=None, correlation_id=None):
     """Build a dict matching the AuditLogs columns, ready for push_audit_logs"""
     return {
+        "audit_id": str(uuid.uuid4()),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "service_name": service_name,
         "event_type": event_type,
         "entity_type": entity_type,

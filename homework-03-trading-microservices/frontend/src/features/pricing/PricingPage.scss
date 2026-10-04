@@ -1,0 +1,13 @@
+@use '../../styles/variables' as *;
+
+.valuation-search {
+  display: flex;
+  gap: 10px;
+  max-width: 520px;
+  padding: 8px;
+
+  &__input {
+    flex: 1;
+    border: none;
+  }
+}

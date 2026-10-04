@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
@@ -212,3 +213,21 @@ class BlotterRepository:
                 })
 
         return {"audit_logs": results}
+
+    def get_recent_errors(self, minutes=5, limit=20):
+        """ERROR audit logs from the last `minutes` (newest first) and their total count"""
+        since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        with SessionFactory() as session:
+            query = session.query(AuditLogs).filter(AuditLogs.severity == "ERROR", AuditLogs.created_at >= since)
+            count = query.count()
+            records = query.order_by(AuditLogs.created_at.desc()).limit(limit).all()
+            errors = [{
+                "audit_id": str(log.audit_id),
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "service_name": log.service_name,
+                "event_type": log.event_type,
+                "entity_id": log.entity_id,
+                "message": log.message,
+            } for log in records]
+
+        return {"count": count, "minutes": minutes, "errors": errors}

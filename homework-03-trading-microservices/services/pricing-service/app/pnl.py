@@ -113,7 +113,7 @@ class PnLService():
             ticks = self.valuation_engine.get_current_tick(symbol)
             quantity, trade_price, side = self.get_basic_values(trade)
 
-            face_value = ticks.get("mid")
+            face_value = ticks.get("face_value")
             coupon = face_value * coupon_rate
             yield_rate = ticks.get("yield")
 
@@ -230,3 +230,68 @@ class PnLService():
             self.log.info("calculated_futures_pnl", trade_id=trade.get("trade_id"), data=data)
             results.append(data)
         return results
+
+
+    def calculate_eu_option(self):
+        # """Calculate PnL for all active European option trades"""
+        # asset_class = "EUROPEAN_OPTION"
+        # results = []
+        # data = {}
+        # active_trades = self.valuation_engine.get_active_trades(asset_class)
+
+        # for trade in active_trades:
+        #     symbol = trade.get("symbol")
+        #     ticks = self.valuation_engine.get_current_tick(symbol)
+        #     quantity, trade_price, side = self.get_basic_values(trade)
+
+        #     current_price = ticks.get("mid")
+        #     fair_value = current_price * self.multiplier * quantity
+
+        #     unrealized_pnl = self.calculate_pnl(side, current_price, trade_price, quantity)
+        #     data = {
+        #         "trade_id": trade.get("trade_id"),
+        #         "book_id": trade.get("book_id"),
+        #         "asset_class": asset_class,
+        #         "symbol": symbol,
+        #         "fair_value": round(fair_value, 2),
+        #         "unrealized_pnl": unrealized_pnl,
+        #         "realized_pnl": 0.0,
+        #         "total_pnl": unrealized_pnl,
+        #         "currency": trade.get("trade_currency"),
+        #     }
+        #     self.log.info("calculated_eu_option_pnl", trade_id=trade.get("trade_id"), data=data)
+        #     results.append(data)
+        # return results
+        pass
+
+    def calculate_irs(self):
+        # """Calculate PnL for all active Interest rate swap trades"""
+        # asset_class = "IRS"
+        # results = []
+        # data = {}
+        # active_trades = self.valuation_engine.get_active_trades(asset_class)
+
+        # for trade in active_trades:
+        #     symbol = trade.get("symbol")
+        #     ticks = self.valuation_engine.get_current_tick(symbol)
+        #     quantity, trade_price, side = self.get_basic_values(trade)
+
+        #     current_price = ticks.get("mid")
+        #     fair_value = current_price * self.multiplier * quantity
+
+        #     unrealized_pnl = self.calculate_pnl(side, current_price, trade_price, quantity)
+        #     data = {
+        #         "trade_id": trade.get("trade_id"),
+        #         "book_id": trade.get("book_id"),
+        #         "asset_class": asset_class,
+        #         "symbol": symbol,
+        #         "fair_value": round(fair_value, 2),
+        #         "unrealized_pnl": unrealized_pnl,
+        #         "realized_pnl": 0.0,
+        #         "total_pnl": unrealized_pnl,
+        #         "currency": trade.get("trade_currency"),
+        #     }
+        #     self.log.info("calculated_irs_pnl", trade_id=trade.get("trade_id"), data=data)
+        #     results.append(data)
+        # return results
+        pass
