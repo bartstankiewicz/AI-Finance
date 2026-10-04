@@ -12,6 +12,7 @@ class BlotterServiceApi(Bottle):
         self.route('/trades/<trade_id>', method='GET', callback=self.get_trades_by_id)
         self.route('/trades/<trade_id>/valuations', method='GET', callback=self.get_trades_valuations)
         self.route('/trades/<trade_id>/audit-logs', method='GET', callback=self.get_trades_audit_logs)
+        self.route('/audit-logs/errors', method='GET', callback=self.get_recent_errors)
 
 
     def health(self):
@@ -47,3 +48,13 @@ class BlotterServiceApi(Bottle):
     def get_trades_audit_logs(self, trade_id):
         """Get trade audit logs by trade_id"""
         return self.blotter_repository.get_trades_audit_logs(trade_id)
+
+    def get_recent_errors(self):
+        """ERROR audit logs from all services within the last N minutes"""
+        try:
+            minutes = int(request.query.get('minutes', 5)) # type: ignore[attr-defined]
+            limit = int(request.query.get('limit', 20)) # type: ignore[attr-defined]
+        except ValueError:
+            response.status = 400
+            return {"error": "minutes and limit must be integers"}
+        return self.blotter_repository.get_recent_errors(max(1, min(minutes, 1440)), max(1, min(limit, 200)))

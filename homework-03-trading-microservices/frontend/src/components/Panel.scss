@@ -1,0 +1,14 @@
+@use '../styles/variables' as *;
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: $gap;
+  min-height: 200px;
+  padding: $gap $gap * 1.5;
+  border-radius: $radius-lg;
+
+  &__title {
+    font-size: 1rem;
+  }
+}

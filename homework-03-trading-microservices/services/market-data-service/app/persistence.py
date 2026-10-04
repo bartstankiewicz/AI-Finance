@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from shared.trading_shared.db import SessionFactory
 from shared.trading_shared.models import MarketDataSpotPrices, MarketDataCurves, MarketDataSnapshots
-from sqlalchemy import func
+from sqlalchemy import func, select
 import threading
 
 
@@ -96,8 +96,44 @@ class Persistence:
     def get_last_event_id(self):
         """Get the last event ID"""
         with SessionFactory() as session:
-            max_event_id = session.query(func.max(MarketDataSpotPrices.event_id)).scalar()
-            if max_event_id is None:
-                max_event_id = 0
+            max_event_id = max(
+                session.query(func.max(MarketDataSpotPrices.event_id)).scalar() or 0,
+                session.query(func.max(MarketDataCurves.event_id)).scalar() or 0,
+            )
             print(f"Last event ID from DB: {max_event_id}")
             return max_event_id
+
+    def get_history(self, limit):
+        """Last `limit` persisted spot prices per symbol, oldest first"""
+        with SessionFactory() as session:
+            ranked = (
+                session.query(
+                    MarketDataSpotPrices.symbol,
+                    MarketDataSpotPrices.event_id,
+                    MarketDataSpotPrices.event_time,
+                    MarketDataSpotPrices.spot,
+                    func.row_number().over(
+                        partition_by=MarketDataSpotPrices.symbol,
+                        order_by=MarketDataSpotPrices.event_id.desc(),
+                    ).label("rn"),
+                )
+                .filter(MarketDataSpotPrices.spot.isnot(None), MarketDataSpotPrices.event_id.isnot(None))
+                .subquery()
+            )
+
+            rows = (
+                session.query(ranked.c.symbol, ranked.c.event_id, ranked.c.event_time, ranked.c.spot)
+                .filter(ranked.c.rn <= limit)
+                .order_by(ranked.c.symbol, ranked.c.event_id)
+                .all()
+            )
+
+            history = {}
+            for row in rows:
+                history.setdefault(row.symbol, []).append({
+                    "event_id": row.event_id,
+                    "timestamp": row.event_time.isoformat(),
+                    "spot": float(row.spot),
+                })
+
+        return history

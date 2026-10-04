@@ -6,7 +6,16 @@ from shared.trading_shared.bottle_server import run_server
 
 from api import MarketDataApi
 from config import HOST, PORT, TICK_INTERVAL, SERVICE_NAME
-from generator import Generator
+from generator import (
+    EventIdSequence,
+    EquityMarketDataGenerator,
+    FixedIncomeMarketDataGenerator,
+    ForexMarketDataGenerator,
+    CommodityMarketDataGenerator,
+    FuturesMarketDataGenerator,
+    EUOptionMarketDataGenerator,
+    CurveGenerator,
+)
 from publisher import Publisher
 from persistence import Persistence
 
@@ -14,21 +23,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 import time
 import threading
-import traceback
 import structlog
 
 log = structlog.get_logger().bind(service=SERVICE_NAME)
 
 
-def market_data_service(generator, executor, publisher, persistence, latest_data: dict):
+def market_data_service(generators, executor, publisher, persistence, latest_data: dict):
     while True:
-        tasks = [
-            executor.submit(generator.generate_equity_data),
-            executor.submit(generator.generate_fixed_income_data),
-            executor.submit(generator.generate_forex_data),
-            executor.submit(generator.generate_commodity_data),
-            executor.submit(generator.generate_futures_data)
-        ]
+        tasks = [executor.submit(g.generate) for g in generators]
 
         for task in tasks:
             try:
@@ -53,17 +55,43 @@ def push_data_to_db(persistence):
         time.sleep(10)
 
 
+def refresh_curves(curve_generator, persistence, publisher, latest_curves: dict):
+    curves = curve_generator.generate()
+    for curve in curves:
+        persistence.add_curve(curve)
+        latest_curves[curve["curve_name"]] = curve
+        publisher.publish_data(curve)
+    persistence.push_curves()
+    return curves
+
+
 if __name__ == '__main__':
     latest_data = {}
+    latest_curves = {}
 
-    executor = ThreadPoolExecutor(max_workers=5)
     publisher = Publisher()
     persistence = Persistence()
-    last_event_id = persistence.get_last_event_id()
-    generator = Generator(last_event_id)
-    app = MarketDataApi(publisher, latest_data)
+    ids = EventIdSequence(persistence.get_last_event_id())
+    fx_generator = ForexMarketDataGenerator(ids)
+    generators = [
+        EquityMarketDataGenerator(ids),
+        FixedIncomeMarketDataGenerator(ids),
+        fx_generator,
+        CommodityMarketDataGenerator(ids),
+        FuturesMarketDataGenerator(ids),
+        EUOptionMarketDataGenerator(ids),
+    ]
+    curve_generator = CurveGenerator(ids, fx_generator)
+    executor = ThreadPoolExecutor(max_workers=len(generators))
 
-    thread_market_ticks = threading.Thread(target=market_data_service, args=(generator, executor, publisher, persistence, latest_data), daemon=True)
+    refresh_curves(curve_generator, persistence, publisher, latest_curves)
+    app = MarketDataApi(
+        publisher, latest_data, latest_curves,
+        refresh_curves=lambda: refresh_curves(curve_generator, persistence, publisher, latest_curves),
+        get_history=persistence.get_history,
+    )
+
+    thread_market_ticks = threading.Thread(target=market_data_service, args=(generators, executor, publisher, persistence, latest_data), daemon=True)
     thread_market_ticks.start()
 
     thread_snapshot = threading.Thread(target=push_data_to_db, args=(persistence,), daemon=True)

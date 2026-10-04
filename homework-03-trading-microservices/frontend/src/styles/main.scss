@@ -1,0 +1,213 @@
+@use 'themes';
+@use 'variables' as *;
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: $color-bg;
+  color: $color-text;
+  font-family: $font-family;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 500;
+}
+
+.card {
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius;
+}
+
+.app {
+  display: grid;
+  // auto = sidebar decides its own width (expanded/collapsed); minmax(0, 1fr) lets wide tables scroll
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  min-height: 100vh;
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    gap: $gap * 1.5;
+    min-width: 0;
+    padding: $gap * 1.5;
+  }
+}
+
+.placeholder {
+  color: $color-muted;
+}
+
+// Theme switch (View Transitions API, started in useTheme): new theme wipes in from right to left
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  animation: theme-wipe 0.6s ease-in-out;
+}
+
+@keyframes theme-wipe {
+  from {
+    clip-path: inset(0 0 0 100%);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.muted {
+  margin: 0;
+  color: $color-muted;
+  font-size: 0.85rem;
+}
+
+.error {
+  margin: 0;
+  color: $color-down;
+  font-size: 0.85rem;
+}
+
+// Titled block: "Last Generated Trades" + table
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: $gap;
+
+  h2 {
+    display: flex;
+    align-items: center;
+    gap: $gap;
+    font-size: 1rem;
+  }
+}
+
+// Side-by-side panels, wrap on narrow screens
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: $gap * 1.5;
+}
+
+// Row of KPI cards, wraps on narrow screens
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: $gap;
+}
+
+// Soft tinted fill (like status badges), solid fill on hover - works in both themes
+@mixin btn-tone($c) {
+  background: color-mix(in srgb, #{$c} 15%, transparent);
+  border-color: color-mix(in srgb, #{$c} 40%, transparent);
+  color: $c;
+
+  &:hover:not(:disabled) {
+    background: $c;
+    border-color: $c;
+    color: $color-bg;
+  }
+}
+
+.btn {
+  padding: 6px 14px;
+  border: 1px solid $color-border;
+  border-radius: 8px;
+  background: $color-surface-2;
+  color: $color-text;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: $color-accent;
+    color: $color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &--primary {
+    background: $color-accent;
+    border-color: $color-accent;
+    color: $color-bg;
+    font-weight: 600;
+
+    &:hover:not(:disabled) {
+      color: $color-bg;
+      opacity: 0.85;
+    }
+  }
+
+  &--danger {
+    @include btn-tone($color-down);
+  }
+
+  &--accent {
+    @include btn-tone($color-accent);
+  }
+
+  &--link {
+    padding: 0;
+    border: none;
+    background: none;
+    color: $color-accent;
+    font-family: $font-mono;
+    text-decoration: underline;
+  }
+}
+
+.input {
+  padding: 6px 10px;
+  border: 1px solid $color-border;
+  border-radius: 8px;
+  background: $color-bg;
+  color: $color-text;
+  font: inherit;
+  font-size: 0.9rem;
+
+  &:focus {
+    outline: none;
+    border-color: $color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  label {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    gap: $gap;
+    font-size: 0.9rem;
+  }
+
+  input[type='checkbox'] {
+    justify-self: start;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 10px;
+  }
+}

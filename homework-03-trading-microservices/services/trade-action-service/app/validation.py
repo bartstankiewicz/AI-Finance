@@ -31,6 +31,21 @@ class TradeActionValidation:
         if action.get("action_type") != "OPEN_TRADE":
             self.reject_trade(action, f"Invalid action_type for opening trade: {action.get('action_type')}. Must be 'OPEN_TRADE'")
 
+        if action.get("asset_class") == "EUROPEAN_OPTION":
+            self.validate_option_fields(action)
+
+    def validate_option_fields(self, action):
+        """Validate option-specific fields of an OPEN_TRADE action"""
+        for field in ["underlying_symbol", "option_type", "strike", "maturity_years"]:
+            if not action.get(field):
+                self.reject_trade(action, f"Missing required option field: {field}")
+
+        if action["option_type"] not in ("CALL", "PUT"):
+            self.reject_trade(action, f"Invalid option_type: {action['option_type']}. Must be 'CALL' or 'PUT'")
+
+        if action["strike"] <= 0 or action["maturity_years"] <= 0:
+            self.reject_trade(action, "strike and maturity_years must be positive")
+
     def validate_close_trade(self, action):
         """Validate the action data for closing a trade"""
         for field in ["action_type", "trade_id", "close_reason"]:

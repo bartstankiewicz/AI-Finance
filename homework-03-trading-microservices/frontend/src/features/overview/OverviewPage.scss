@@ -1,0 +1,17 @@
+@use '../../styles/variables' as *;
+
+// Segmented Business / Developer switch, top-right of the view
+.overview-mode {
+  display: inline-flex;
+  align-self: flex-end;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid $color-border;
+  border-radius: $radius;
+  background: $color-surface;
+
+  .btn:not(.btn--primary) {
+    border-color: transparent;
+    background: none;
+  }
+}

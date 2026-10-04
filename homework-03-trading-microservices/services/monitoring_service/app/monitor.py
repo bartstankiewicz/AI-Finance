@@ -11,6 +11,7 @@ class Monitor:
     def __init__(self):
         self.log = structlog.get_logger().bind(service=SERVICE_NAME)
         self.status = {}
+        self.error_counter = {}
 
     def check_service(self, service_name: str, service_url: str):
         """Check service health status"""
@@ -35,4 +36,4 @@ class Monitor:
         if is_up:
             self.status[service_name]["response_time_ms"] = str(response_time_ms)
         
-        return self.status
+        return self.status[service_name]

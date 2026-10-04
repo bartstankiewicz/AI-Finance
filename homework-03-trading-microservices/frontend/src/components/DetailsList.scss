@@ -1,0 +1,26 @@
+@use '../styles/variables' as *;
+
+.details-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.9rem;
+
+  &__row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    align-items: baseline;
+    gap: $gap;
+  }
+
+  dt {
+    color: $color-muted;
+  }
+
+  dd {
+    margin: 0;
+    font-family: $font-mono;
+    word-break: break-all;
+  }
+}

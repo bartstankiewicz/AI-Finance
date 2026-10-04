@@ -1,0 +1,27 @@
+@use 'sass:color';
+
+// Each theme = 3 base colors; all other shades are mixed from them the same way.
+// Red ($down) is the single exception, reserved for errors/DOWN.
+@mixin theme($bg, $text, $accent, $down) {
+  --color-bg: #{$bg};
+  --color-text: #{$text};
+  --color-accent: #{$accent};
+  --color-surface: #{color.mix($text, $bg, 5%)};
+  --color-surface-2: #{color.mix($text, $bg, 9%)};
+  --color-border: #{color.mix($text, $bg, 16%)};
+  --color-muted: #{color.mix($text, $bg, 55%)};
+  --color-up: #{$accent};
+  --color-down: #{$down};
+}
+
+// data-theme is set on <html> by useTheme(); dark is the default
+:root,
+[data-theme='dark'] {
+  @include theme(#0e141b, #d5dde6, #2dd4bf, #f87171);
+  color-scheme: dark; // native controls (select, checkbox, scrollbars)
+}
+
+[data-theme='light'] {
+  @include theme(#fbfcfd, #1f2933, #0d9488, #dc2626);
+  color-scheme: light;
+}
