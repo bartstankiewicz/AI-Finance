@@ -165,9 +165,32 @@ class ForexMarketDataGenerator(MarketDataGenerator):
 
 
 class FuturesMarketDataGenerator(MarketDataGenerator):
+    """Spot random walk + cost-of-carry futures price F = S * (1 + carry_rate * expiry_years); bid/ask quote F"""
     asset_class = "FUTURES"
     symbol = "OIL"
     initial_price = 100.0
+    expiry_years = 0.5
+    initial_carry_rate = 0.05
+    carry_rate_step = 0.0002
+
+    def _restore_state(self, last_quote: dict) -> None:
+        super()._restore_state(last_quote)
+        self.carry_rate = last_quote.get("carry_rate", self.initial_carry_rate)
+
+    def _price_fields(self) -> dict:
+        spot = self._next_price()
+        self.carry_rate = _bounded_walk(self.carry_rate, self.carry_rate_step, 0.0, 0.10, decimals=5)
+        futures_price = round(spot * (1 + self.carry_rate * self.expiry_years), self.decimal_places)
+        fields = {
+            **self._two_sided_quote(futures_price),
+            "spot": spot,
+            "last": self.last_price,
+            "futures_price": futures_price,
+            "carry_rate": self.carry_rate,
+            "expiry_years": self.expiry_years,
+        }
+        self.last_price = spot
+        return fields
 
 
 class CommodityMarketDataGenerator(MarketDataGenerator):

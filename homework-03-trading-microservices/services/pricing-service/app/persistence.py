@@ -61,7 +61,7 @@ class ValuationCache:
     def __init__(self, load_latest, load_by_trade_id):
         self.load_latest = load_latest
         self.load_by_trade_id = load_by_trade_id
-        self.lock = threading.RLock()
+        self.lock = threading.Lock()
         self.recent = deque(load_latest(), maxlen=RECENT_CACHE_SIZE)
         self.by_trade = OrderedDict()
 
@@ -226,7 +226,6 @@ class Persistence:
             )
             return [self._valuation_to_dict(record) for record in query]
 
-    # Materialized here because api.py serializes the result to JSON (Bottle can't serialize generators)
     def get_all_valuations(self):
         """Latest valuations, served from ValuationCache"""
         return list(self.valuation_cache.latest())

@@ -88,6 +88,7 @@ class CommodityTradeGenerator(TradeGenerator):
 class FuturesTradeGenerator(TradeGenerator):
     asset_class = "FUTURES"
     symbol = "OIL"
+    price_field = "futures_price"
 
 
 class EUOptionTradeGenerator(TradeGenerator):
@@ -178,7 +179,7 @@ class TradeActionGenerator:
             "action_type": "CLOSE_TRADE",
             "client_request_id": _client_request_id(),
             "trade_id": active_trade["trade_id"],
-            "close_price": tick.get("mid") or tick.get("face_value"),
+            "close_price": tick.get("futures_price") or tick.get("mid") or tick.get("face_value"),
             "closed_at": _utc_now(),
             "close_reason": "RANDOM_TRADE_OUT",
         }
