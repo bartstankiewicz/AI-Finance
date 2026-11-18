@@ -14,51 +14,55 @@ from valuation_publisher import ValuationPublisher
 from market_data_client import MarketDataClient
 from persistence import Persistence
 from valuation_engine import ValuationEngine
-from pnl import PnLService
-from config import HOST, PORT, VALUATION_INTERVAL, SERVICE_NAME
+from pnl_quotes import PnLServices, PNL_SERVICES
+from book_metrics import BookMetrics
+from config import (
+    HOST, PORT, VALUATION_INTERVAL, SERVICE_NAME,
+    BENCHMARK_SYMBOL, ALPHA_BETA_WINDOW,
+)
 
 log = structlog.get_logger()
 
 
-ASSET_CLASSES = ["EQUITY", "BOND", "FX", "COMMODITY", "FUTURES", "EUROPEAN_OPTION", "IRS"]
+ASSET_CLASSES = list(PNL_SERVICES)
 
 DB_PUSH_INTERVAL = 10
 
 # Docker kills the container 10 s after SIGTERM; joins must finish well before that
 JOIN_TIMEOUT = 3
+TICK_WAIT_TIMEOUT = 1.0
 
 
-def pricing_service_active_trades(pnl_service, persistence, publisher, executor, stop):
+def pricing_service_active_trades(pnl_services, persistence, publisher, book_metrics, market_data_client, executor, stop):
     while not stop.is_set():
-        tasks = [
-            executor.submit(pnl_service.calculate_equity),
-            executor.submit(pnl_service.calculate_fixed_income),
-            executor.submit(pnl_service.calculate_forex),
-            executor.submit(pnl_service.calculate_commodity),
-            executor.submit(pnl_service.calculate_futures),
-            executor.submit(pnl_service.calculate_eu_option),
-            executor.submit(pnl_service.calculate_irs),
-        ]
-        for task in tasks:
+        if not market_data_client.wait_for_tick(TICK_WAIT_TIMEOUT):
+            continue
+        tasks = {asset_class: executor.submit(pnl_services.calculate_active, asset_class) for asset_class in ASSET_CLASSES}
+        cycle_valuations = []
+        for asset_class, task in tasks.items():
             try:
                 for valuation in task.result():
                     persistence.add_valuation(valuation)
                     publisher.publish_data(valuation)
+                    cycle_valuations.append(valuation)
             except Exception:
-                log.exception("Error processing active trades")
-        stop.wait(VALUATION_INTERVAL)
+                log.exception("Error processing active trades", asset_class=asset_class)
+        try:
+            book_metrics.update(cycle_valuations)
+        except Exception:
+            log.exception("Error updating book metrics")
 
 
-def pricing_service_close_trades(pnl_service, persistence, publisher, executor, stop):
+def pricing_service_close_trades(pnl_services, persistence, publisher, executor, stop):
     while not stop.is_set():
-        tasks = [executor.submit(pnl_service.calculate_closed_positions, asset_class) for asset_class in ASSET_CLASSES]
-        for task in tasks:
+        tasks = {asset_class: executor.submit(pnl_services.calculate_closed_positions, asset_class) for asset_class in ASSET_CLASSES}
+        for asset_class, task in tasks.items():
             try:
                 # Already stored together with is_settled - only publish
                 for valuation in task.result():
                     publisher.publish_data(valuation)
             except Exception:
-                log.exception("Error processing closed trades")
+                log.exception("Error processing closed trades", asset_class=asset_class)
         stop.wait(VALUATION_INTERVAL)
 
 
@@ -82,15 +86,16 @@ if __name__ == '__main__':
     persistence = Persistence()
     market_data_client = MarketDataClient()
     valuation_engine = ValuationEngine(persistence, market_data_client)
-    pnl_service = PnLService(valuation_engine)
-    app = PricingServiceApi(publisher, valuation_engine)
+    pnl_services = PnLServices(valuation_engine)
+    book_metrics = BookMetrics(valuation_engine, BENCHMARK_SYMBOL, ALPHA_BETA_WINDOW)
+    app = PricingServiceApi(publisher, valuation_engine, book_metrics)
 
     market_data_client.start()
 
-    executor = ThreadPoolExecutor(max_workers=7)
+    executor = ThreadPoolExecutor(max_workers=len(ASSET_CLASSES))
     threads = [
-        threading.Thread(target=pricing_service_active_trades, args=(pnl_service, persistence, publisher, executor, stop), name="valuation-active", daemon=True),
-        threading.Thread(target=pricing_service_close_trades, args=(pnl_service, persistence, publisher, executor, stop), name="valuation-closed", daemon=True),
+        threading.Thread(target=pricing_service_active_trades, args=(pnl_services, persistence, publisher, book_metrics, market_data_client, executor, stop), name="valuation-active", daemon=True),
+        threading.Thread(target=pricing_service_close_trades, args=(pnl_services, persistence, publisher, executor, stop), name="valuation-closed", daemon=True),
         threading.Thread(target=push_to_db, args=(persistence, stop), name="db-push", daemon=True),
     ]
     for thread in threads:

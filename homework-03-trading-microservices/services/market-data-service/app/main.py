@@ -7,7 +7,7 @@ from shared.trading_shared.logging_config import configure_logging
 from shared.trading_shared.audit import log_audit_error, AuditEventType
 
 from api import MarketDataApi, LatestValues
-from config import HOST, PORT, TICK_INTERVAL, DB_PUSH_INTERVAL, SERVICE_NAME
+from config import HOST, PORT, TICK_INTERVAL, DB_PUSH_INTERVAL, RATES_REFRESH_TICKS, SERVICE_NAME
 from generator import (
     EventIdSequence,
     EquityMarketDataGenerator,
@@ -16,6 +16,8 @@ from generator import (
     CommodityMarketDataGenerator,
     FuturesMarketDataGenerator,
     EUOptionMarketDataGenerator,
+    MarketIndexGenerator,
+    InterestRates,
     CurveGenerator,
 )
 from publisher import Publisher
@@ -32,7 +34,8 @@ log = structlog.get_logger()
 JOIN_TIMEOUT = 3
 
 
-def market_data_service(generators, publisher, persistence, latest_data: LatestValues, stop: threading.Event):
+def market_data_service(generators, publisher, persistence, latest_data: LatestValues, stop: threading.Event, refresh_rates):
+    rounds = 0
     with ThreadPoolExecutor(max_workers=len(generators)) as executor:
         while not stop.is_set():
             tasks = [executor.submit(g.generate) for g in generators]
@@ -46,6 +49,13 @@ def market_data_service(generators, publisher, persistence, latest_data: LatestV
                     persistence.add_snapshot(data)
                 except Exception:
                     log.exception("error_generating_market_data")
+
+            rounds += 1
+            if RATES_REFRESH_TICKS and rounds % RATES_REFRESH_TICKS == 0:
+                try:
+                    refresh_rates()
+                except Exception:
+                    log.exception("error_refreshing_rates")
             stop.wait(TICK_INTERVAL)
 
 
@@ -64,13 +74,15 @@ def push_data_to_db(persistence, stop: threading.Event):
     push_all(persistence)  # final flush on shutdown
 
 
-def refresh_curves(curve_generator, persistence, publisher, latest_curves: LatestValues):
-    curves = curve_generator.generate()
+def refresh_curves(curve_generator, persistence, publisher, latest_curves: LatestValues, shift_rates=False, push_now=True):
+    """push_now=False leaves the DB write to the db-push thread (used from the tick loop)"""
+    curves = curve_generator.generate(shift_rates=shift_rates)
     for curve in curves:
         persistence.add_curve(curve)
         latest_curves.put(curve["curve_name"], curve)
         publisher.publish_data(curve)
-    persistence.push_curves()
+    if push_now:
+        persistence.push_curves()
     return curves
 
 
@@ -83,26 +95,34 @@ if __name__ == '__main__':
     publisher = Publisher()
     persistence = Persistence()
     ids = EventIdSequence.from_db(persistence)
-    fx_generator = ForexMarketDataGenerator(ids, persistence)
+    rates = InterestRates.from_db(persistence)
+    fx_generator = ForexMarketDataGenerator(ids, persistence, rates)
+    bond_generator = FixedIncomeMarketDataGenerator(ids, persistence)
     generators = [
         EquityMarketDataGenerator(ids, persistence),
-        FixedIncomeMarketDataGenerator(ids, persistence),
+        bond_generator,
         fx_generator,
         CommodityMarketDataGenerator(ids, persistence),
         FuturesMarketDataGenerator(ids, persistence),
         EUOptionMarketDataGenerator(ids, persistence),
+        MarketIndexGenerator(ids, persistence),
     ]
-    curve_generator = CurveGenerator(ids, fx_generator)
+    curve_generator = CurveGenerator(ids, rates, bond_generator)
 
     refresh_curves(curve_generator, persistence, publisher, latest_curves)
     app = MarketDataApi(
         publisher, latest_data, latest_curves,
-        refresh_curves=lambda: refresh_curves(curve_generator, persistence, publisher, latest_curves),
+        refresh_curves=lambda: refresh_curves(curve_generator, persistence, publisher, latest_curves, shift_rates=True),
         get_history=persistence.get_history,
     )
 
     threads = [
-        threading.Thread(target=market_data_service, args=(generators, publisher, persistence, latest_data, stop), name="market-ticks", daemon=True),
+        threading.Thread(
+            target=market_data_service,
+            args=(generators, publisher, persistence, latest_data, stop,
+                  lambda: refresh_curves(curve_generator, persistence, publisher, latest_curves, shift_rates=True, push_now=False)),
+            name="market-ticks", daemon=True,
+        ),
         threading.Thread(target=push_data_to_db, args=(persistence, stop), name="db-push", daemon=True),
     ]
     for thread in threads:

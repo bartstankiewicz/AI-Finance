@@ -1,4 +1,8 @@
+from functools import wraps
+
+
 def validate_input(func):
+    @wraps(func)
     def wrapper(self, *args, **kwargs):
         if not args or not args[0]:
             raise ValueError(f"{func.__name__} argument cannot be None or empty")
@@ -24,6 +28,15 @@ class ValuationEngine():
     def get_current_tick(self, symbol):
         """Get the current market tick for a specific symbol"""
         return self.market_data_client.get_price(symbol)
+
+    @validate_input
+    def get_curve(self, curve_name):
+        """Get the latest market data curve, e.g. USD_DISCOUNT"""
+        return self.market_data_client.get_curve(curve_name)
+
+    def get_market_data_status(self):
+        """CONNECTED / DISCONNECTED state of the market data stream"""
+        return self.market_data_client.get_connection_status()
 
     @validate_input
     def settle_trade(self, valuation):

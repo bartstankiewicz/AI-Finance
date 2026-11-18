@@ -26,6 +26,15 @@ TRADE_COLUMNS = (
     Trades.trade_price,
     Trades.trade_currency,
     Trades.close_price,
+    Trades.notional,
+    Trades.fixed_rate,
+    Trades.maturity_years,
+    Trades.payments_per_year,
+    Trades.direction,
+    Trades.trade_date,
+    Trades.underlying_symbol,
+    Trades.option_type,
+    Trades.strike,
 )
 
 ACTIVE = (Trades.status == "ACTIVE",)
@@ -160,6 +169,9 @@ class Persistence:
 
     @staticmethod
     def _to_trade(row):
+        def optional_float(value):
+            return float(value) if value is not None else None
+
         return {
             "trade_id": str(row.trade_id),
             "book_id": str(row.book_id),
@@ -169,7 +181,16 @@ class Persistence:
             "quantity": float(row.quantity),
             "trade_price": float(row.trade_price),
             "trade_currency": row.trade_currency,
-            "close_price": float(row.close_price) if row.close_price is not None else None,
+            "close_price": optional_float(row.close_price),
+            "notional": optional_float(row.notional),
+            "fixed_rate": optional_float(row.fixed_rate),
+            "maturity_years": optional_float(row.maturity_years),
+            "payments_per_year": int(row.payments_per_year) if row.payments_per_year is not None else None,
+            "direction": row.direction,
+            "trade_date": row.trade_date,
+            "underlying_symbol": row.underlying_symbol,
+            "option_type": row.option_type,
+            "strike": optional_float(row.strike),
         }
 
     def _query_trades(self, conditions):

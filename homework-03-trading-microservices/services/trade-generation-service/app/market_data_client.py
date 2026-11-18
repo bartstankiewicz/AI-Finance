@@ -16,6 +16,7 @@ class MarketDataClient:
         self.connection_status = "DISCONNECTED"
         self.received_event_id = 0
         self.cache = {}
+        self.curves = {}
         self.log = structlog.get_logger()
 
     def start(self):
@@ -57,6 +58,10 @@ class MarketDataClient:
             if not line.startswith('data: '):
                 continue
             data = json.loads(line[6:])
+            if data.get("event_type") == "CURVE":
+                with self.lock:
+                    self.curves[data["curve_name"]] = data
+                continue
             symbol = data.get("symbol")
             if not symbol:
                 continue
@@ -68,3 +73,8 @@ class MarketDataClient:
         _, symbol = asset_description
         with self.lock:
             return self.cache.get(symbol)
+
+    def get_curve(self, curve_name):
+        """Get latest curve by name, e.g. USD_DISCOUNT"""
+        with self.lock:
+            return self.curves.get(curve_name)

@@ -6,6 +6,7 @@ HOST = os.environ.get('MARKET_DATA_HOST', '0.0.0.0')
 PORT = int(os.environ.get('MARKET_DATA_PORT', 8001))
 
 TICK_INTERVAL = float(os.environ.get('TICK_INTERVAL', 10.0))
+RATES_REFRESH_TICKS = int(os.environ.get('RATES_REFRESH_TICKS', 1000))
 
 TICK_BUFFER_SIZE = int(os.environ.get('TICK_BUFFER_SIZE', 100))
 SNAPSHOT_BUFFER_SIZE = int(os.environ.get('SNAPSHOT_BUFFER_SIZE', 300))

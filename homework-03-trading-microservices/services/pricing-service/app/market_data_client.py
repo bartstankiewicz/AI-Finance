@@ -3,7 +3,7 @@ import urllib.request
 import threading
 import time
 import structlog
-from config import STREAM_URL, RECONNECTING_INTERVAL
+from config import STREAM_URL, RECONNECTING_INTERVAL, TICK_SETTLE_TIME
 from shared.trading_shared.audit import log_audit_error, AuditEventType
 
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -14,9 +14,9 @@ class MarketDataClient:
         self.log = structlog.get_logger()
         self.lock = threading.Lock()
         self.connection_status = "DISCONNECTED"
-        self.received_event_id = 0
         self.cache = {}
         self.curves = {}
+        self.tick_received = threading.Event()
 
     def start(self):
         """Start streaming thread"""
@@ -56,7 +56,11 @@ class MarketDataClient:
             line = line.decode('utf-8').strip()
             if not line.startswith('data: '):
                 continue
-            data = json.loads(line[6:])
+            try:
+                data = json.loads(line[6:])
+            except json.JSONDecodeError:
+                self.log.warning("invalid_market_data_event", line=line[:200])
+                continue
             if data.get("event_type") == "CURVE":
                 with self.lock:
                     self.curves[data["curve_name"]] = data
@@ -66,11 +70,24 @@ class MarketDataClient:
                 continue
             with self.lock:
                 self.cache[symbol] = data
+            self.tick_received.set()
+
+    def wait_for_tick(self, timeout):
+        """True once new ticks arrived since the previous call; waits TICK_SETTLE_TIME so one call covers the whole round"""
+        if not self.tick_received.wait(timeout):
+            return False
+        time.sleep(TICK_SETTLE_TIME)
+        self.tick_received.clear()
+        return True
 
     def get_price(self, symbol):
-        """Get latest price for asset_description = (asset_class, symbol)"""
+        """Get latest tick of a symbol"""
         with self.lock:
             return self.cache.get(symbol)
+
+    def get_connection_status(self):
+        with self.lock:
+            return self.connection_status
 
     def get_curve(self, curve_name):
         """Get latest curve by name, e.g. USD_DISCOUNT"""

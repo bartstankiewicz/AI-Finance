@@ -2,7 +2,6 @@ import json
 import threading
 import queue
 import structlog
-from config import SERVICE_NAME
 
 class ValuationPublisher:
     def __init__(self):

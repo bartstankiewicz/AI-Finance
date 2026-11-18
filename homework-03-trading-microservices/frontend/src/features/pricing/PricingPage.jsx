@@ -1,11 +1,27 @@
 import { useState } from 'react'
 import DataTable from '../../components/DataTable.jsx'
+import QueryNotice from '../../components/QueryNotice.jsx'
 import StreamNotice from '../../components/StreamNotice.jsx'
 import StreamStatusBadge from '../../components/StreamStatusBadge.jsx'
-import { getTradeValuations } from '../../api/pricing.js'
+import { getBooks } from '../../api/books.js'
+import { formatAlphaBp, getBookMetrics, getTradeValuations } from '../../api/pricing.js'
+import usePolling from '../../hooks/usePolling.js'
 import { formatDateTime, formatNumber, shortId } from '../../utils/format.js'
 import useValuationStream from './useValuationStream.js'
 import './PricingPage.scss'
+
+// Half of TICK_INTERVAL - book metrics change once per tick round
+const BOOK_METRICS_POLL_MS = 5000
+
+const BOOK_METRICS_COLUMNS = [
+  { key: 'name', label: 'Book' },
+  { key: 'book_id', label: 'Book ID', format: shortId },
+  { key: 'alpha', label: 'Alpha', format: formatAlphaBp },
+  { key: 'beta', label: 'Beta', format: (v) => formatNumber(v, 3) },
+  { key: 'last_book_return', label: 'Last Book Return', format: formatAlphaBp },
+  { key: 'last_benchmark_return', label: 'Last Benchmark Return', format: formatAlphaBp },
+  { key: 'updated_at', label: 'Updated', format: formatDateTime },
+]
 
 // valuation_status is not returned by pricing-service yet; valuation_time only by GET /valuations
 const valuationColumns = (renderTradeId) => [
@@ -25,6 +41,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export default function PricingPage() {
   const { latestBySymbol, status, lastEventAt } = useValuationStream()
+  const metrics = usePolling(getBookMetrics, BOOK_METRICS_POLL_MS)
+  const books = usePolling(getBooks)
   const [tradeId, setTradeId] = useState('')
   const [results, setResults] = useState(null)
   const [searchError, setSearchError] = useState(null)
@@ -58,6 +76,11 @@ export default function PricingPage() {
   ]
   const lastValuations = Object.values(latestBySymbol).sort((a, b) => a.symbol.localeCompare(b.symbol))
 
+  const bookNames = Object.fromEntries((books.data ?? []).map((book) => [book.book_id, book.name]))
+  const bookMetrics = (metrics.data?.book_metrics ?? [])
+    .map((row) => ({ ...row, name: bookNames[row.book_id] }))
+    .sort((a, b) => (a.name ?? a.book_id).localeCompare(b.name ?? b.book_id))
+
   return (
     <>
       <StreamNotice
@@ -79,6 +102,22 @@ export default function PricingPage() {
           loading={status === 'CONNECTING'}
           emptyMessage="No valuations received yet"
         />
+      </section>
+
+      <section className="section">
+        <h2>Book metrics{metrics.data && ` vs ${metrics.data.benchmark_symbol}`}</h2>
+        <QueryNotice what="book metrics" service="Pricing Service" error={metrics.error} updatedAt={metrics.updatedAt} />
+        <DataTable
+          columns={BOOK_METRICS_COLUMNS}
+          rows={bookMetrics}
+          rowKey="book_id"
+          loading={metrics.loading}
+          emptyMessage="No book observations yet – books need active trades valued across benchmark ticks"
+        />
+        <p className="muted">
+          Rolling window of the last 100 observations (one per benchmark tick); alpha and beta appear once the window
+          is full. Alpha = mean book return per observation not explained by beta.
+        </p>
       </section>
 
       <section className="section">

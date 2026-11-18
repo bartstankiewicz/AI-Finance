@@ -1,7 +1,14 @@
+import math
+
 import structlog
 
 from shared.trading_shared.audit import log_audit_error, AuditEventType
 from config import SERVICE_NAME
+
+IRS_SIDE_BY_DIRECTION = {"PAY_FIXED": "BUY", "RECEIVE_FIXED": "SELL"}
+IRS_PAYMENTS_PER_YEAR = (1, 2, 4, 12)
+IRS_MAX_MATURITY_YEARS = 10
+IRS_FIXED_RATE_RANGE = (-0.05, 0.20)
 
 
 class TradeActionValidation:
@@ -32,6 +39,43 @@ class TradeActionValidation:
 
         if action.get("asset_class") == "EUROPEAN_OPTION":
             self.validate_option_fields(action)
+        elif action.get("asset_class") == "IRS":
+            self.validate_irs_fields(action)
+
+    def validate_irs_fields(self, action):
+        """Validate IRS-specific fields of an OPEN_TRADE action"""
+        numeric_fields = ("notional", "fixed_rate", "maturity_years", "payments_per_year")
+        for field in (*numeric_fields, "direction"):
+            if action.get(field) is None:
+                self.reject_trade(action, f"Missing required IRS field: {field}")
+
+        for field in numeric_fields:
+            value = action[field]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                self.reject_trade(action, f"IRS field {field} must be a finite number, got: {value!r}")
+
+        direction = action["direction"]
+        if direction not in IRS_SIDE_BY_DIRECTION:
+            self.reject_trade(action, f"Invalid direction: {direction}. Must be one of {list(IRS_SIDE_BY_DIRECTION)}")
+        if action["side"] != IRS_SIDE_BY_DIRECTION[direction]:
+            self.reject_trade(action, f"side {action['side']} does not match direction {direction}")
+
+        if action["notional"] <= 0:
+            self.reject_trade(action, "notional must be positive")
+
+        low, high = IRS_FIXED_RATE_RANGE
+        if not low <= action["fixed_rate"] <= high:
+            self.reject_trade(action, f"fixed_rate must be within [{low}, {high}] (decimal, e.g. 0.0425)")
+
+        payments_per_year = action["payments_per_year"]
+        if payments_per_year not in IRS_PAYMENTS_PER_YEAR:
+            self.reject_trade(action, f"payments_per_year must be one of {IRS_PAYMENTS_PER_YEAR}")
+
+        maturity_years = action["maturity_years"]
+        if not 0 < maturity_years <= IRS_MAX_MATURITY_YEARS:
+            self.reject_trade(action, f"maturity_years must be within (0, {IRS_MAX_MATURITY_YEARS}]")
+        if not math.isclose(maturity_years * payments_per_year, round(maturity_years * payments_per_year)):
+            self.reject_trade(action, "maturity_years * payments_per_year must be a whole number of periods")
 
     def validate_option_fields(self, action):
         """Validate option-specific fields of an OPEN_TRADE action"""
@@ -44,6 +88,9 @@ class TradeActionValidation:
 
         if action["strike"] <= 0 or action["maturity_years"] <= 0:
             self.reject_trade(action, "strike and maturity_years must be positive")
+
+        if not action.get("symbol"):
+            self.reject_trade(action, "Missing required option field: symbol (option market data symbol)")
 
     def validate_close_trade(self, action):
         """Validate the action data for closing a trade"""

@@ -14,7 +14,7 @@ import './MarketDataPage.scss'
 const ALL = 'ALL'
 
 // Tab order; asset classes not listed here (new generators) follow alphabetically
-const CLASS_ORDER = ['EQUITY', 'FOREX', 'COMMODITY', 'FUTURES', 'FIXED_INCOME', 'EUROPEAN_OPTION']
+const CLASS_ORDER = ['MARKET_DATA_INDEX', 'EQUITY', 'FOREX', 'COMMODITY', 'FUTURES', 'FIXED_INCOME', 'EUROPEAN_OPTION']
 
 const timeOfDay = (v) => String(v).slice(11, 23)
 const percent = (digits) => (v) => `${(v * 100).toFixed(digits)}%`
@@ -49,6 +49,7 @@ const FIELDS = {
 // What matters per asset class: bonds are quoted by yield, options by vol - not by bid/ask
 const PRICE_COLUMNS = ['symbol', 'timestamp', 'bid', 'ask', 'mid', 'spot', 'last', 'currency', 'received', 'plot']
 const DEFAULT_COLUMNS = {
+  MARKET_DATA_INDEX: PRICE_COLUMNS,
   EQUITY: PRICE_COLUMNS,
   COMMODITY: PRICE_COLUMNS,
   FUTURES: PRICE_COLUMNS,

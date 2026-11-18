@@ -39,6 +39,15 @@ class TradeActionRepository:
                  close_reason=trade_data.get("close_reason"),
                  source=trade_data.get("source", "GENERATED"),
                  client_request_id=trade_data.get("client_request_id"),
+                 underlying_symbol=trade_data.get("underlying_symbol"),
+                 option_type=trade_data.get("option_type"),
+                 strike=trade_data.get("strike"),
+                 volatility=trade_data.get("volatility"),
+                 maturity_years=trade_data.get("maturity_years"),
+                 notional=trade_data.get("notional"),
+                 fixed_rate=trade_data.get("fixed_rate"),
+                 payments_per_year=trade_data.get("payments_per_year"),
+                 direction=trade_data.get("direction"),
                  trade_metadata=trade_data.get("trade_metadata")
             )
             session.add(record)

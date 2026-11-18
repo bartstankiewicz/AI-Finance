@@ -5,12 +5,86 @@ import structlog
 from config import SERVICE_NAME
 from persistence import Persistence
 
-# Rates curve (bonds, IRS) - tenors in years; yearly points up to 5Y cover annual IRS payments
-RATE_TENORS = {"1Y": 1, "2Y": 2, "3Y": 3, "4Y": 4, "5Y": 5, "7Y": 7, "10Y": 10, "20Y": 20, "30Y": 30}
-USD_BASE_RATES = [0.038, 0.040, 0.041, 0.0415, 0.042, 0.0425, 0.043, 0.044, 0.045]
+# Curve tenors in years; yearly points cover annual IRS payments
+RATE_TENORS = {f"{year}Y": float(year) for year in range(1, 11)}
+# Initial interest rate per currency (annual compounding), used when DB has no FX tick yet
+INITIAL_RATES = {"USD": 0.042, "EUR": 0.027}
+# USD zero-yield spread over the GOVT tick yield per tenor: upward sloping, flattening at the long end
+USD_YIELD_SPREADS = {
+    "1Y": 0.0020, "2Y": 0.0040, "3Y": 0.0055, "4Y": 0.0067, "5Y": 0.0077,
+    "6Y": 0.0085, "7Y": 0.0092, "8Y": 0.0098, "9Y": 0.0103, "10Y": 0.0107,
+}
 
-# FX forward curve - tenors in months
-FX_TENORS = {"1M": 1 / 12, "3M": 0.25, "6M": 0.5, "9M": 0.75, "1Y": 1.0}
+
+def curve_name(currency: str, kind: str) -> str:
+    """e.g. ("USD", "DISCOUNT") -> USD_DISCOUNT"""
+    return f"{currency}_{kind}"
+
+
+class InterestRates:
+    """Current interest rates per currency - single source for FX tick rates and USD curves.
+    A currency is either flat (single rate, moved by shift()) or curve-driven (zero yields per tenor set by
+    set_zero_curve(); its single rate is the shortest zero yield). Both change only on curve refresh.
+    """
+    compounding = "ANNUAL"
+    step_std = 0.0005  # ~5bp per shift
+    rate_low, rate_high = 0.0, 0.10
+
+    def __init__(self, initial_rates: dict = INITIAL_RATES):
+        self._lock = threading.Lock()
+        self._rates = dict(initial_rates)
+        self._zero_curves: dict[str, dict[float, float]] = {}
+
+    @classmethod
+    def from_db(cls, db: Persistence) -> "InterestRates":
+        """Continue from the rates of the last persisted FX tick, so a restart does not move rates"""
+        rates = cls()
+        symbol = ForexMarketDataGenerator.symbol
+        last_fx = db.get_last_quote(symbol) or {}
+        foreign, domestic = symbol.split("/")
+        for currency, field in ((domestic, "domestic_rate"), (foreign, "foreign_rate")):
+            if last_fx.get(field) is not None:
+                rates._rates[currency] = last_fx[field]
+        return rates
+
+    @property
+    def currencies(self) -> list[str]:
+        return list(self._rates)
+
+    def shift(self) -> None:
+        """One random-walk step per flat currency; curve-driven currencies move only via set_zero_curve"""
+        with self._lock:
+            for currency, rate in self._rates.items():
+                if currency not in self._zero_curves:
+                    self._rates[currency] = _bounded_walk(rate, self.step_std, self.rate_low, self.rate_high, decimals=5)
+
+    def set_zero_curve(self, currency: str, zero_yields: dict[float, float]) -> None:
+        """zero_yields: year fraction -> annually compounded zero yield"""
+        with self._lock:
+            self._zero_curves[currency] = dict(sorted(zero_yields.items()))
+            self._rates[currency] = self._zero_curves[currency][min(zero_yields)]
+
+    def rate(self, currency: str) -> float:
+        with self._lock:
+            return self._rates[currency]
+
+    def zero_rate(self, currency: str, t: float) -> float:
+        """Linear interpolation of zero yields, flat outside the curve; flat currencies return their single rate"""
+        with self._lock:
+            curve = self._zero_curves.get(currency)
+            if not curve:
+                return self._rates[currency]
+            times = list(curve)
+            if t <= times[0]:
+                return curve[times[0]]
+            if t >= times[-1]:
+                return curve[times[-1]]
+            for t0, t1 in zip(times, times[1:]):
+                if t0 <= t <= t1:
+                    return curve[t0] + (curve[t1] - curve[t0]) * (t - t0) / (t1 - t0)
+
+    def discount_factor(self, currency: str, t: float) -> float:
+        return 1 / (1 + self.zero_rate(currency, t)) ** t
 
 
 def _bounded_walk(value: float, step_std: float, low: float, high: float, decimals: int = 4) -> float:
@@ -132,6 +206,8 @@ class FixedIncomeMarketDataGenerator(MarketDataGenerator):
     currency = "PERCENT_OF_PAR"
     initial_price = 100.0
     initial_yield = 0.043
+    # Small per-tick step: the USD curves are rebuilt from this yield only every RATES_REFRESH_TICKS
+    yield_step = 0.00002
 
     def _restore_state(self, last_quote: dict) -> None:
         self.last_price = last_quote.get("face_value") or self.initial_price
@@ -140,28 +216,27 @@ class FixedIncomeMarketDataGenerator(MarketDataGenerator):
     def _price_fields(self) -> dict:
         self.last_price = self._next_price()
         last_yield = self.yield_rate
-        self.yield_rate = _bounded_walk(self.yield_rate, 0.0005, 0.001, 0.15, decimals=5)
+        self.yield_rate = _bounded_walk(self.yield_rate, self.yield_step, 0.001, 0.15, decimals=5)
         return {"face_value": self.last_price, "yield": self.yield_rate, "last_yield": last_yield}
 
 
 class ForexMarketDataGenerator(MarketDataGenerator):
+    """Spot random walk; domestic/foreign rates are the current InterestRates of the pair currencies"""
     asset_class = "FOREX"
     symbol = "EUR/USD"
     initial_price = 1.2
     decimal_places = 4
-    initial_domestic_rate = 0.043  # USD (quote currency)
-    initial_foreign_rate = 0.025   # EUR (base currency)
-    rate_step = 0.0001             # ~1bp std per tick
 
-    def _restore_state(self, last_quote: dict) -> None:
-        super()._restore_state(last_quote)
-        self.domestic_rate = last_quote.get("domestic_rate", self.initial_domestic_rate)
-        self.foreign_rate = last_quote.get("foreign_rate", self.initial_foreign_rate)
+    def __init__(self, ids: EventIdSequence, db: Persistence, rates: InterestRates):
+        self.rates = rates
+        self.foreign_currency, self.domestic_currency = self.symbol.split("/")
+        super().__init__(ids, db)
 
     def _extra_fields(self) -> dict:
-        self.domestic_rate = _bounded_walk(self.domestic_rate, self.rate_step, 0.0, 0.10, decimals=5)
-        self.foreign_rate = _bounded_walk(self.foreign_rate, self.rate_step, 0.0, 0.10, decimals=5)
-        return {"domestic_rate": self.domestic_rate, "foreign_rate": self.foreign_rate}
+        return {
+            "domestic_rate": self.rates.rate(self.domestic_currency),
+            "foreign_rate": self.rates.rate(self.foreign_currency),
+        }
 
 
 class FuturesMarketDataGenerator(MarketDataGenerator):
@@ -199,8 +274,15 @@ class CommodityMarketDataGenerator(MarketDataGenerator):
     initial_price = 2000.0
 
 
+class MarketIndexGenerator(MarketDataGenerator):
+    """Benchmark for book alpha/beta; starts at the SPX close of 2026-11-17"""
+    asset_class = "MARKET_DATA_INDEX"
+    symbol = "S&P500"
+    initial_price = 7340.53
+
+
 class EUOptionMarketDataGenerator(MarketDataGenerator):
-    """Option-only inputs (sigma, q); pricing takes spot from the ACME tick and r from USD_YIELD"""
+    """Option-only inputs (sigma, q); pricing takes spot from the ACME tick and r from USD_DISCOUNT"""
     asset_class = "EUROPEAN_OPTION"
     underlying_symbol = EquityMarketDataGenerator.symbol
     symbol = f"{underlying_symbol}_EU_OPTION"
@@ -225,52 +307,65 @@ class EUOptionMarketDataGenerator(MarketDataGenerator):
             "dividend_yield": self.dividend_yield,
         }
 
-
-class IRSMarketDataGenerator(MarketDataGenerator):
-    asset_class = "INTEREST_RATE_SWAP"
-    # TODO
-    symbol = "???"
-
 class CurveGenerator:
-    def __init__(self, ids: EventIdSequence, fx: ForexMarketDataGenerator):
+    """USD yield/discount/forward curves from the GOVT yield.
+    USD zero yields = current GOVT tick yield + USD_YIELD_SPREADS; the 1Y point is also the USD rate in FX ticks.
+    """
+    yield_currency = "USD"
+
+    def __init__(self, ids: EventIdSequence, rates: InterestRates, bond: FixedIncomeMarketDataGenerator):
         self.event_id = ids
-        self.fx = fx
+        self.rates = rates
+        self.bond = bond
         self.log = structlog.get_logger().bind(service=SERVICE_NAME)
+        self._lock = threading.Lock()  # one refresh at a time: shift + build see the same rates
 
-    def generate(self) -> list[dict]:
-        """Generate USD yield/discount curves and EUR/USD forward curve (on startup / on demand)"""
-        event_time = MarketDataGenerator._event_time()
-
-        shift = random.uniform(-0.005, 0.005)
-        yields = [round(r + shift, 5) for r in USD_BASE_RATES]
-        discount_factors = [round(1 / (1 + r) ** t, 6) for r, t in zip(yields, RATE_TENORS.values())]
-
-        spot = self.fx.last_price
-        domestic_rate = self.fx.domestic_rate
-        foreign_rate = self.fx.foreign_rate
-        forwards = [
-            round(spot * (1 + domestic_rate * t) / (1 + foreign_rate * t), 5)
-            for t in FX_TENORS.values()
-        ]
-
-        curves = [
-            self._build_curve(
-                "USD_YIELD", "YIELD_CURVE", "USD", RATE_TENORS, yields, event_time,
-                compounding="ANNUAL",
-            ),
-            self._build_curve(
-                "USD_DISCOUNT", "DISCOUNT_CURVE", "USD", RATE_TENORS, discount_factors, event_time,
-                compounding="ANNUAL", source_curve="USD_YIELD",
-            ),
-            self._build_curve(
-                "EUR/USD_FWD", "FX_FORWARD_CURVE", "USD", FX_TENORS, forwards, event_time,
-                pair="EUR/USD", spot=spot, domestic_rate=domestic_rate, foreign_rate=foreign_rate,
-                forward_points=[round((f - spot) * 10000, 1) for f in forwards],
-            ),
-        ]
-
-        self.log.info("generated_curves", curves=[c["curve_name"] for c in curves])
+    def generate(self, shift_rates: bool = False) -> list[dict]:
+        """Build all curves; shift_rates=True first moves the flat (EUR) rates one random-walk step"""
+        with self._lock:
+            if shift_rates:
+                self.rates.shift()
+            base_yield = self.bond.yield_rate
+            self.rates.set_zero_curve(self.yield_currency, {
+                RATE_TENORS[tenor]: round(base_yield + spread, 5) for tenor, spread in USD_YIELD_SPREADS.items()
+            })
+            event_time = MarketDataGenerator._event_time()
+            curves = [
+                self._yield_curve(base_yield, event_time),
+                self._discount_curve(self.yield_currency, event_time),
+                self._forward_rate_curve(self.yield_currency, event_time),
+            ]
+        self.log.info("generated_curves", curves=[c["curve_name"] for c in curves], rates_shifted=shift_rates,
+                      base_yield=base_yield)
         return curves
+
+    def _yield_curve(self, base_yield: float, event_time: str) -> dict:
+        currency = self.yield_currency
+        return self._build_curve(
+            curve_name(currency, "YIELD"), "YIELD_CURVE", currency, RATE_TENORS,
+            [round(self.rates.zero_rate(currency, t), 6) for t in RATE_TENORS.values()], event_time,
+            base_symbol=self.bond.symbol, base_yield=base_yield,
+            compounding=self.rates.compounding,
+        )
+
+    def _discount_curve(self, currency: str, event_time: str) -> dict:
+        """DF(t) = (1 + z(t))^-t"""
+        return self._build_curve(
+            curve_name(currency, "DISCOUNT"), "DISCOUNT_CURVE", currency, RATE_TENORS,
+            [round(self.rates.discount_factor(currency, t), 6) for t in RATE_TENORS.values()], event_time,
+            rate=self.rates.rate(currency),
+            compounding=self.rates.compounding,
+        )
+
+    def _forward_rate_curve(self, currency: str, event_time: str) -> dict:
+        """Annual forward per [t_prev, t]: F = DF(t_prev) / DF(t) - 1; the first period equals the 1Y zero yield"""
+        dfs = [self.rates.discount_factor(currency, t) for t in [0.0, *RATE_TENORS.values()]]
+        forwards = [round(df0 / df1 - 1, 6) for df0, df1 in zip(dfs, dfs[1:])]
+        return self._build_curve(
+            curve_name(currency, "FORWARD"), "FORWARD_CURVE", currency, RATE_TENORS, forwards, event_time,
+            discount_curve=curve_name(currency, "DISCOUNT"),
+            compounding=self.rates.compounding,
+        )
 
     def _build_curve(self, curve_name, curve_type, currency, tenors: dict, rates, event_time, **extra) -> dict:
         return {
