@@ -11,10 +11,10 @@ export const renderCell = (col, row) => {
 
 const SORT_ICONS = { asc: '▲', desc: '▼' }
 
-// col.className: string, or (row) => string for per-row styling (ignored in the header)
+// col.className: string, or (row) => string for per-row styling (ignored in the header); col.numeric right-aligns
 const cellClass = (col, row) => {
   const custom = typeof col.className === 'function' ? row && col.className(row) : col.className
-  return [custom, col.pinned && 'is-pinned'].filter(Boolean).join(' ') || undefined
+  return [col.numeric && 'num-cell', custom, col.pinned && 'is-pinned'].filter(Boolean).join(' ') || undefined
 }
 
 // Re-renders only when its row object or the columns array changes - live tables keep both stable
@@ -27,7 +27,7 @@ const DataRow = memo(function DataRow({ row, columns }) {
 // col.className styles cells (e.g. stale values); emptyMessage replaces "No data" (e.g. no filter matches).
 // footer: rendered under the rows inside the table frame, e.g. <Pagination />
 // onMoveColumn(key, targetKey) (from useColumnLayout) enables header drag & drop; col.pinned headers stay put
-export default function DataTable({ columns, rows, rowKey, sort, onSort, loading = false, emptyMessage = 'No data', footer, onMoveColumn }) {
+export default function DataTable({ columns, rows, rowKey, sort, onSort, loading = false, emptyMessage = 'No data', footer, onMoveColumn, compact = false }) {
   const dragProps = (col) =>
     onMoveColumn && !col.pinned
       ? {
@@ -59,7 +59,7 @@ export default function DataTable({ columns, rows, rowKey, sort, onSort, loading
   }
 
   return (
-    <div className="data-table">
+    <div className={compact ? 'data-table data-table--compact' : 'data-table'}>
       <div className="data-table__scroll">
         <table>
           <thead>

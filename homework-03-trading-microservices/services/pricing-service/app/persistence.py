@@ -1,5 +1,5 @@
 from collections import OrderedDict, defaultdict, deque
-from datetime import datetime, timezone
+from datetime import datetime
 import sys
 import threading
 import uuid
@@ -11,7 +11,7 @@ from shared.trading_shared.audit import log_audit_error, AuditEventType
 from shared.trading_shared.db import SessionFactory
 from shared.trading_shared.models import Valuations, Trades
 
-from config import BATCH_SIZE, BUFFER_FLUSH_SIZE, RECENT_CACHE_SIZE, PER_TRADE_CACHE_SIZE, MAX_CACHED_TRADES
+from config import BATCH_SIZE, BUFFER_FLUSH_SIZE, MAX_BUFFER_SIZE, RECENT_CACHE_SIZE, PER_TRADE_CACHE_SIZE, MAX_CACHED_TRADES
 
 log = structlog.get_logger()
 
@@ -70,7 +70,8 @@ class ValuationCache:
     def __init__(self, load_latest, load_by_trade_id):
         self.load_latest = load_latest
         self.load_by_trade_id = load_by_trade_id
-        self.lock = threading.Lock()
+        # Reentrant: writers hold it across the commit and then call add(), which takes it again
+        self.lock = threading.RLock()
         self.recent = deque(load_latest(), maxlen=RECENT_CACHE_SIZE)
         self.by_trade = OrderedDict()
 
@@ -118,20 +119,36 @@ class Persistence:
         """Add valuation data to the buffer; flushes it right away once it reaches BUFFER_FLUSH_SIZE"""
         with self.valuation_lock:
             self.valuation_buffer.append(data)
-            if len(self.valuation_buffer) < BUFFER_FLUSH_SIZE:
+            if len(self.valuation_buffer) != BUFFER_FLUSH_SIZE:
                 return
             batch = self._take_buffer()
         try:
-            self._store(batch)
+            self._store_or_restore(batch)
         except Exception:
             log_audit_error(log, AuditEventType.DB_PUSH_ERROR, "Error pushing valuations to DB", exc_info=True)
 
     def push_valuations(self):
-        """Push valuation data from the buffer to the database"""
+        """Push valuation data from the buffer to the database; on failure the batch goes back to the buffer"""
         with self.valuation_lock:
             batch = self._take_buffer()
         if batch:
+            self._store_or_restore(batch)
+
+    def _store_or_restore(self, batch):
+        try:
             self._store(batch)
+        except Exception:
+            self._restore_buffer(batch)
+            raise
+
+    def _restore_buffer(self, batch):
+        """Put a failed batch back in front of newer valuations; beyond MAX_BUFFER_SIZE the oldest are dropped"""
+        with self.valuation_lock:
+            self.valuation_buffer[:0] = batch
+            dropped = len(self.valuation_buffer) - MAX_BUFFER_SIZE
+            if dropped > 0:
+                del self.valuation_buffer[:dropped]
+                log.warning("valuation_buffer_overflow", dropped=dropped, max_size=MAX_BUFFER_SIZE)
 
     def _take_buffer(self):
         """Shallow-copy and clear the buffer; caller must hold valuation_lock"""
@@ -156,7 +173,8 @@ class Persistence:
             trade_id=data["trade_id"],
             book_id=data["book_id"],
             asset_class=data["asset_class"],
-            valuation_time=datetime.now(timezone.utc),
+            # Python 3.10 fromisoformat does not accept the "Z" suffix
+            valuation_time=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
             fair_value=data["fair_value"],
             market_value=data.get("market_value"),
             unrealized_pnl=data.get("unrealized_pnl", 0),
@@ -269,4 +287,5 @@ class Persistence:
             "realized_pnl": float(record.realized_pnl),
             "total_pnl": float(record.total_pnl),
             "currency": record.currency,
+            "valuation_status": (record.valuation_payload or {}).get("valuation_status"),
         }

@@ -1,17 +1,29 @@
 @use '../../styles/variables' as *;
 
-// Segmented Business / Developer switch, top-right of the view
-.overview-mode {
-  display: inline-flex;
-  align-self: flex-end;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid $color-border;
-  border-radius: $radius;
-  background: $color-surface;
+// Overall verdict banner - the colored edge is readable at a glance
+.system-health {
+  display: flex;
+  align-items: flex-start;
+  gap: $gap;
+  padding: $gap;
+  border-left: 4px solid $color-muted;
 
-  .btn:not(.btn--primary) {
-    border-color: transparent;
-    background: none;
+  &--up { border-left-color: $color-up; }
+  &--warn { border-left-color: $color-warn; }
+  &--down { border-left-color: $color-down; }
+
+  .status-badge {
+    margin-top: 3px;
+  }
+
+  &__title {
+    font-size: 1.1rem;
+  }
+
+  &__issues {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    color: $color-muted;
+    font-size: 0.85rem;
   }
 }

@@ -9,15 +9,17 @@ import usePersistentState from '../../hooks/usePersistentState.js'
 import usePolling from '../../hooks/usePolling.js'
 import useTableView from '../../hooks/useTableView.js'
 import { getBooksSummary } from '../../api/blotter.js'
-import { formatAlphaBp, getBookMetrics } from '../../api/pricing.js'
+import { getBookMetrics } from '../../api/pricing.js'
 import { ASSET_CLASSES } from '../../constants.js'
-import { formatNumber, shortId } from '../../utils/format.js'
+import { formatAlpha, formatNumber, shortId } from '../../utils/format.js'
 import { useBlotterSessions } from './BlotterSessions.jsx'
 import { formatPnl } from './formatPnl.jsx'
 import useLiveValuations from './useLiveValuations.js'
 import './BlotterPage.scss'
 
 const BOOKS_POLL_MS = 5000
+// Half of TICK_INTERVAL - book metrics change once per tick round
+const BOOK_METRICS_POLL_MS = 5000
 const STORAGE_KEY = 'blotter.books'
 const DEFAULT_COLUMNS = ['name', 'expected_asset_class', 'active_trades', 'realized_pnl', 'unrealized_pnl', 'total_pnl', 'alpha', 'beta', 'trades']
 const DEFAULT_PINNED = ['name']
@@ -65,20 +67,22 @@ function withLiveBookPnl(books, liveByTrade) {
   })
 }
 
+// alpha/beta stay null until pricing-service fills the rolling window for the book
+function withBookMetrics(books, metrics) {
+  const byBook = Object.fromEntries((metrics ?? []).map((m) => [m.book_id, m]))
+  return books.map((book) => ({ ...book, alpha: byBook[book.book_id]?.alpha ?? null, beta: byBook[book.book_id]?.beta ?? null }))
+}
+
 // Trades are browsed in micro-session windows (TradesWindow) - one per book or for all books
 export default function BlotterPage() {
   const { byTrade, status: streamStatus, lastEventAt } = useLiveValuations()
   const books = usePolling(getBooksSummary, BOOKS_POLL_MS)
-  const metrics = usePolling(getBookMetrics, BOOKS_POLL_MS)
+  const metrics = usePolling(getBookMetrics, BOOK_METRICS_POLL_MS)
   const { sessions, blocked, openSession } = useBlotterSessions()
   const [savedFilters, setFilters] = usePersistentState(`${STORAGE_KEY}.selection`, EMPTY_FILTERS)
 
-  const metricsByBook = Object.fromEntries((metrics.data?.book_metrics ?? []).map((m) => [m.book_id, m]))
-  const bookRows = withLiveBookPnl(books.data ?? [], byTrade).map((book) => ({
-    ...book,
-    alpha: metricsByBook[book.book_id]?.alpha,
-    beta: metricsByBook[book.book_id]?.beta,
-  }))
+  const bookRows = withBookMetrics(withLiveBookPnl(books.data ?? [], byTrade), metrics.data?.book_metrics)
+  const metricsCell = metrics.error ? 'is-stale' : undefined
   const openScopes = new Set(sessions.map((s) => s.bookId))
 
   // Silence is expected when nothing is open, so STALE only counts while there are active trades to value
@@ -86,20 +90,18 @@ export default function BlotterPage() {
   const status = streamStatus === 'STALE' && !hasActiveTrades ? 'CONNECTED' : streamStatus
   const isLive = status === 'CONNECTED' || status === 'CONNECTING'
   const liveCell = isLive ? undefined : 'is-stale'
-  const metricsCell = metrics.error ? 'is-stale' : undefined
 
-  // alpha / beta come from pricing-service (GET /book-metrics), not from blotter-service
   const bookColumns = [
     { key: 'name', label: 'Book', sortable: true },
     { key: 'book_id', label: 'Book ID', format: shortId, sortable: true },
     { key: 'expected_asset_class', label: 'Asset Class', sortable: true },
-    { key: 'active_trades', label: 'Active Trades', sortable: true },
-    { key: 'realized_pnl', label: 'Realized PnL', format: formatPnl, sortable: true },
-    { key: 'unrealized_pnl', label: 'Unrealized PnL', format: formatPnl, className: liveCell, sortable: true },
-    { key: 'total_pnl', label: 'Total PnL', format: formatPnl, className: liveCell, sortable: true },
+    { key: 'active_trades', label: 'Active Trades', sortable: true, numeric: true },
+    { key: 'realized_pnl', label: 'Realized PnL', format: formatPnl, sortable: true, numeric: true },
+    { key: 'unrealized_pnl', label: 'Unrealized PnL', format: formatPnl, className: liveCell, sortable: true, numeric: true },
+    { key: 'total_pnl', label: 'Total PnL', format: formatPnl, className: liveCell, sortable: true, numeric: true },
+    { key: 'alpha', label: 'Alpha', format: formatAlpha, className: metricsCell, sortable: true, numeric: true },
+    { key: 'beta', label: 'Beta', format: (v) => formatNumber(v, 3), className: metricsCell, sortable: true, numeric: true },
     { key: 'currency', label: 'Ccy', sortable: true },
-    { key: 'alpha', label: 'Alpha', format: formatAlphaBp, className: metricsCell, sortable: true },
-    { key: 'beta', label: 'Beta', format: (v) => formatNumber(v, 3), className: metricsCell, sortable: true },
     {
       key: 'trades',
       label: 'Trades',
@@ -153,7 +155,7 @@ export default function BlotterPage() {
           <ColumnSettings layout={layout} />
         </div>
         <QueryNotice what="books" service="Blotter Service" error={books.error} updatedAt={books.updatedAt} />
-        <QueryNotice what="alpha / beta" service="Pricing Service" error={metrics.error} updatedAt={metrics.updatedAt} />
+        <QueryNotice what="book alpha/beta" service="Pricing Service" error={metrics.error} updatedAt={metrics.updatedAt} />
         <DataTable
           columns={layout.columns}
           rows={view.rows}
@@ -168,7 +170,6 @@ export default function BlotterPage() {
                 : 'No books yet. Create one in the Books view.'
           }
         />
-        <p className="muted">„Trades” opens the book's trades in a separate window (active, history, watchlist).</p>
       </section>
     </>
   )

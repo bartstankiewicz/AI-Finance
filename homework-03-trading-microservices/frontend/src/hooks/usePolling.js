@@ -10,7 +10,9 @@ export default function usePolling(fetcher, intervalMs = null) {
 
   useEffect(() => {
     let cancelled = false
+    let timer = null
 
+    // Next load is scheduled after the previous one settles, so a slow backend never gets overlapping requests
     const load = async () => {
       try {
         const result = await fetcher()
@@ -21,13 +23,13 @@ export default function usePolling(fetcher, intervalMs = null) {
       } catch (err) {
         if (!cancelled) setError(err)
       }
+      if (!cancelled && intervalMs) timer = setTimeout(load, intervalMs)
     }
 
     load()
-    const id = intervalMs ? setInterval(load, intervalMs) : null
     return () => {
       cancelled = true
-      clearInterval(id)
+      clearTimeout(timer)
     }
   }, [fetcher, intervalMs, reloadCount])
 

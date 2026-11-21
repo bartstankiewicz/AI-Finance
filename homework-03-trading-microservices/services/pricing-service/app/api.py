@@ -23,8 +23,15 @@ class PricingServiceApi(Bottle):
         return health_status
 
     def valuations(self):
-        """Get all valuations"""
-        return {"valuations": self.valuation_engine.get_all_valuations()}
+        """Get the latest valuations (newest first); optional ?limit=N"""
+        valuations = self.valuation_engine.get_all_valuations()
+        limit = request.query.get("limit")
+        if limit is None:
+            return {"valuations": valuations}
+        if not limit.isdigit():
+            response.status = 400
+            return {"error": "limit must be a non-negative integer"}
+        return {"valuations": valuations[:int(limit)]}
 
     def valuations_by_trade(self, trade_id):
         """Get valuations for a specific trade_id"""

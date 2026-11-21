@@ -33,6 +33,15 @@ JOIN_TIMEOUT = 3
 TICK_WAIT_TIMEOUT = 1.0
 
 
+def publish_valuations(publisher, book_metrics, valuations):
+    """Each event carries the latest alpha / beta of its book (None until the rolling window is full)"""
+    alpha_beta = book_metrics.alpha_beta_by_book()
+    for valuation in valuations:
+        alpha, beta = alpha_beta.get(valuation["book_id"], (None, None))
+        # New dict: the stored valuation may still sit in the DB buffer
+        publisher.publish_data({**valuation, "alpha": alpha, "beta": beta})
+
+
 def pricing_service_active_trades(pnl_services, persistence, publisher, book_metrics, market_data_client, executor, stop):
     while not stop.is_set():
         if not market_data_client.wait_for_tick(TICK_WAIT_TIMEOUT):
@@ -41,26 +50,26 @@ def pricing_service_active_trades(pnl_services, persistence, publisher, book_met
         cycle_valuations = []
         for asset_class, task in tasks.items():
             try:
-                for valuation in task.result():
+                valuations = task.result()
+                for valuation in valuations:
                     persistence.add_valuation(valuation)
-                    publisher.publish_data(valuation)
-                    cycle_valuations.append(valuation)
+                cycle_valuations.extend(valuations)
             except Exception:
                 log.exception("Error processing active trades", asset_class=asset_class)
         try:
             book_metrics.update(cycle_valuations)
         except Exception:
             log.exception("Error updating book metrics")
+        publish_valuations(publisher, book_metrics, cycle_valuations)
 
 
-def pricing_service_close_trades(pnl_services, persistence, publisher, executor, stop):
+def pricing_service_close_trades(pnl_services, publisher, book_metrics, executor, stop):
     while not stop.is_set():
         tasks = {asset_class: executor.submit(pnl_services.calculate_closed_positions, asset_class) for asset_class in ASSET_CLASSES}
         for asset_class, task in tasks.items():
             try:
                 # Already stored together with is_settled - only publish
-                for valuation in task.result():
-                    publisher.publish_data(valuation)
+                publish_valuations(publisher, book_metrics, task.result())
             except Exception:
                 log.exception("Error processing closed trades", asset_class=asset_class)
         stop.wait(VALUATION_INTERVAL)
@@ -95,7 +104,7 @@ if __name__ == '__main__':
     executor = ThreadPoolExecutor(max_workers=len(ASSET_CLASSES))
     threads = [
         threading.Thread(target=pricing_service_active_trades, args=(pnl_services, persistence, publisher, book_metrics, market_data_client, executor, stop), name="valuation-active", daemon=True),
-        threading.Thread(target=pricing_service_close_trades, args=(pnl_services, persistence, publisher, executor, stop), name="valuation-closed", daemon=True),
+        threading.Thread(target=pricing_service_close_trades, args=(pnl_services, publisher, book_metrics, executor, stop), name="valuation-closed", daemon=True),
         threading.Thread(target=push_to_db, args=(persistence, stop), name="db-push", daemon=True),
     ]
     for thread in threads:

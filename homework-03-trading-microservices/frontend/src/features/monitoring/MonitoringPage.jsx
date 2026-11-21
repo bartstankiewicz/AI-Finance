@@ -20,7 +20,7 @@ export default function MonitoringPage() {
   const columns = [
     { key: 'label', label: 'Service', sortable: true },
     { key: 'status', label: 'Status', sortable: true, format: (v) => <StatusBadge status={v} /> },
-    { key: 'response_time_ms', label: 'Response Time', sortable: true, format: (v) => `${Math.round(v)} ms` },
+    { key: 'response_time_ms', label: 'Response Time', sortable: true, numeric: true, format: (v) => `${Math.round(v)} ms` },
     {
       key: 'details',
       label: 'Details',
@@ -54,7 +54,18 @@ export default function MonitoringPage() {
       </section>
 
       <div className="panels">
-        <DataTable columns={columns} rows={table.rows} rowKey="id" sort={table.sort} onSort={table.toggleSort} />
+        <DataTable
+          columns={columns}
+          rows={table.rows}
+          rowKey="id"
+          sort={table.sort}
+          onSort={table.toggleSort}
+          loading={streamStatus === 'CONNECTING'}
+          emptyMessage={
+            streamStatus === 'RECONNECTING' ? 'Monitoring feed unavailable – service status unknown.'
+              : 'No health checks reported yet.'
+          }
+        />
 
         <Panel title={selected ? `${selected.label} Service – Details` : 'Details'}>
           {selected ? <ServiceDetails service={selected} /> : <p className="muted">Click „Details” on a service.</p>}

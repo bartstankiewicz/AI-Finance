@@ -27,19 +27,19 @@ const FIELDS = {
   symbol: { label: 'Symbol', filter: 'text' },
   asset_class: { label: 'Asset Class', filter: 'text' },
   timestamp: { label: 'Timestamp', format: timeOfDay },
-  bid: { label: 'Bid' },
-  ask: { label: 'Ask' },
-  mid: { label: 'Mid' },
-  spot: { label: 'Spot', className: moveClass('spot', 'last') },
-  last: { label: 'Last' },
-  yield: { label: 'Yield', format: percent(3), className: moveClass('yield', 'last_yield') },
-  last_yield: { label: 'Last Yield', format: percent(3) },
-  face_value: { label: 'Face Value' },
-  domestic_rate: { label: 'Domestic Rate', format: percent(2) },
-  foreign_rate: { label: 'Foreign Rate', format: percent(2) },
+  bid: { label: 'Bid', numeric: true },
+  ask: { label: 'Ask', numeric: true },
+  mid: { label: 'Mid', numeric: true },
+  spot: { label: 'Spot', numeric: true, className: moveClass('spot', 'last') },
+  last: { label: 'Last', numeric: true },
+  yield: { label: 'Yield', format: percent(3), numeric: true, className: moveClass('yield', 'last_yield') },
+  last_yield: { label: 'Last Yield', format: percent(3), numeric: true },
+  face_value: { label: 'Face Value', numeric: true },
+  domestic_rate: { label: 'Domestic Rate', format: percent(2), numeric: true },
+  foreign_rate: { label: 'Foreign Rate', format: percent(2), numeric: true },
   underlying_symbol: { label: 'Underlying' },
-  volatility: { label: 'Volatility', format: percent(2) },
-  dividend_yield: { label: 'Dividend Yield', format: percent(2) },
+  volatility: { label: 'Volatility', format: percent(2), numeric: true },
+  dividend_yield: { label: 'Dividend Yield', format: percent(2), numeric: true },
   currency: { label: 'Currency' },
   event_id: { label: 'Event ID' },
   snapshot_type: { label: 'Snapshot Type' },
@@ -70,7 +70,7 @@ const byClassOrder = (a, b) => {
 }
 
 // Remounted per asset class (key), so persisted sort/filters/layout are read for that class
-function TicksTable({ assetClass, ticks, received, loading }) {
+function TicksTable({ assetClass, ticks, received, loading, streamStatus }) {
   const { active, blocked, openSession, plot } = useChartSessions()
   const defaults = DEFAULT_COLUMNS[assetClass] ?? FALLBACK_COLUMNS
   const present = new Set([...defaults, ...ticks.flatMap((tick) => Object.keys(tick))])
@@ -113,7 +113,7 @@ function TicksTable({ assetClass, ticks, received, loading }) {
       key === 'plot'
         ? plotColumn
         : key === 'received'
-        ? { key, label: 'Received', sortable: true }
+        ? { key, label: 'Received', sortable: true, numeric: true }
         : { key, label: key, sortable: true, ...FIELDS[key] },
     )
   }, [keysId, active, openSession, plot])
@@ -138,7 +138,11 @@ function TicksTable({ assetClass, ticks, received, loading }) {
         onSort={table.toggleSort}
         onMoveColumn={layout.move}
         loading={loading}
-        emptyMessage={ticks.length && hasFilters ? <NoMatches onClear={() => table.setFilters({})} /> : 'No ticks received yet'}
+        emptyMessage={
+          ticks.length && hasFilters ? <NoMatches onClear={() => table.setFilters({})} />
+            : streamStatus === 'RECONNECTING' ? 'Market data stream unavailable – no ticks to show.'
+              : 'No ticks received yet'
+        }
       />
     </>
   )
@@ -195,6 +199,7 @@ export default function MarketDataPage() {
           ticks={ticks}
           received={received}
           loading={status === 'CONNECTING'}
+          streamStatus={status}
         />
       </section>
     </>

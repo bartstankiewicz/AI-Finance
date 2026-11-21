@@ -89,10 +89,6 @@ $tag-shades: (
 
 // Scoped to the window so the fills outrank DataTable's row hover background
 .trades-window .data-table td {
-  &.num-cell {
-    text-align: right;
-  }
-
   // Solid fills for the fields a trader scans first (like a classic blotter)
   &.tag-cell {
     font-weight: 600;

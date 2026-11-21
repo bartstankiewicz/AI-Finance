@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Text, Numeric, DateTime, Boolean, ForeignKey
+from sqlalchemy import BigInteger, Text, Numeric, DateTime, Boolean, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from datetime import datetime, timezone
@@ -61,6 +61,8 @@ class Trades(Base):
 
 class Valuations(Base):
     __tablename__ = "Valuations"
+    # Latest valuation per trade (blotter /books/summary, trade details) and per-trade history
+    __table_args__ = (Index("ix_valuations_trade_id_valuation_time", "trade_id", "valuation_time"),)
 
     valuation_id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trade_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("Trades.trade_id"), nullable=False)

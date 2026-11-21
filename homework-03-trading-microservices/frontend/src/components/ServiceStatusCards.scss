@@ -15,4 +15,17 @@
   padding: 12px;
   font-size: 0.8rem;
   text-align: center;
+  border-top: 3px solid $color-muted;
+
+  &--up { border-top-color: $color-up; }
+  &--down { border-top-color: $color-down; }
+
+  &__hint {
+    max-width: 100%;
+    overflow: hidden;
+    color: $color-muted;
+    font-size: 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

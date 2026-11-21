@@ -14,6 +14,7 @@ TICK_SETTLE_TIME = float(os.environ.get('TICK_SETTLE_TIME', 0.5))
 
 BATCH_SIZE = int(os.environ.get('BATCH_SIZE', 5000))
 BUFFER_FLUSH_SIZE = int(os.environ.get('BUFFER_FLUSH_SIZE', 1000))
+MAX_BUFFER_SIZE = int(os.environ.get('MAX_BUFFER_SIZE', 20000))
 
 RECENT_CACHE_SIZE = int(os.environ.get('RECENT_CACHE_SIZE', 1000))
 PER_TRADE_CACHE_SIZE = int(os.environ.get('PER_TRADE_CACHE_SIZE', 50))

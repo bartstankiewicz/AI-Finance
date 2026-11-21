@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import DataTable from '../../components/DataTable.jsx'
 import Panel from '../../components/Panel.jsx'
-import QueryNotice from '../../components/QueryNotice.jsx'
 import StatusBadge from '../../components/StatusBadge.jsx'
+import StreamNotice from '../../components/StreamNotice.jsx'
+import StreamStatusBadge from '../../components/StreamStatusBadge.jsx'
 import usePolling from '../../hooks/usePolling.js'
 import {
   generateOnce,
@@ -12,12 +13,11 @@ import {
   stopGenerator,
   updateGeneratorConfigs,
 } from '../../api/tradeGeneration.js'
-import { getTrades } from '../../api/blotter.js'
-import { shortId } from '../../utils/format.js'
+import { formatNumber, formatTime, shortId } from '../../utils/format.js'
+import useGeneratedActions from './useGeneratedActions.js'
 import './TradeGenerationPage.scss'
 
 const POLL_INTERVAL_MS = 2000
-const fetchLatestTrades = () => getTrades({ limit: 10 })
 
 const CONFIG_FIELDS = [
   { key: 'frequency', label: 'Frequency [s]', min: 0.1, step: 'any' },
@@ -37,19 +37,34 @@ const errorMessage = (err) =>
     : err.kind === 'validation' ? `Invalid config: ${err.message}`
       : `Backend error: ${err.message}`
 
-// is_settled is not returned by blotter-service /trades yet
-const TRADE_COLUMNS = [
-  { key: 'trade_id', label: 'Trade Id', format: shortId },
-  { key: 'book_id', label: 'Book Id', format: shortId },
+const OUTCOME_TONES = { SENT: 'UP', FAILED: 'DOWN' }
+
+// CLOSE_TRADE carries only trade_id + close_price, instrument fields stay empty
+const ACTION_COLUMNS = [
+  { key: 'pushed_at', label: 'Time', format: formatTime },
+  { key: 'action_type', label: 'Action' },
+  { key: 'outcome', label: 'Outcome', format: (v) => <StatusBadge status={OUTCOME_TONES[v]}>{v}</StatusBadge> },
   { key: 'asset_class', label: 'Asset Class' },
+  { key: 'symbol', label: 'Symbol' },
   { key: 'side', label: 'Side' },
-  { key: 'status', label: 'Status' },
-  { key: 'is_settled', label: 'Settled', format: (v) => (v ? 'Yes' : 'No') },
+  { key: 'quantity', label: 'Qty', numeric: true },
+  {
+    key: 'price',
+    label: 'Price',
+    numeric: true,
+    render: (row) => {
+      const price = row.trade_price ?? row.close_price
+      return price == null ? '—' : formatNumber(price, 4)
+    },
+  },
+  { key: 'book_id', label: 'Book Id', format: shortId },
+  { key: 'trade_id', label: 'Trade Id', format: shortId },
+  { key: 'error', label: 'Error' },
 ]
 
 export default function TradeGenerationPage() {
   const { data: status, error: statusError, reload: reloadStatus } = usePolling(getGeneratorStatus, POLL_INTERVAL_MS)
-  const trades = usePolling(fetchLatestTrades, POLL_INTERVAL_MS)
+  const actions = useGeneratedActions()
   const [actionError, setActionError] = useState(null)
   const [configForm, setConfigForm] = useState(null)
   const [configError, setConfigError] = useState(null)
@@ -149,16 +164,32 @@ export default function TradeGenerationPage() {
               {savingConfig ? 'Saving…' : 'Save'}
             </button>
           </form>
-          <p className="muted">Empty field keeps the current value.</p>
           {configSaved && <p className="muted">Config saved.</p>}
           {configError && <p className="error">{configError}</p>}
         </Panel>
       </div>
 
       <section className="section">
-        <h2>Last Generated Trades</h2>
-        <QueryNotice what="trades" service="Blotter Service" error={trades.error} updatedAt={trades.updatedAt} />
-        <DataTable columns={TRADE_COLUMNS} rows={trades.data ?? []} rowKey="trade_id" loading={trades.loading} emptyMessage="No trades yet" />
+        <h2>
+          Generated Trade Actions
+          <StreamStatusBadge status={actions.status} />
+        </h2>
+        <StreamNotice
+          name="Trade action stream"
+          status={actions.status}
+          lastEventAt={actions.lastEventAt}
+          impact="New generated actions are not shown"
+        />
+        <DataTable
+          columns={ACTION_COLUMNS}
+          rows={actions.actions}
+          rowKey="client_request_id"
+          loading={actions.status === 'CONNECTING'}
+          emptyMessage={
+            actions.status === 'RECONNECTING' ? 'Trade action stream unavailable'
+              : 'No actions yet – press Start or Generate once.'
+          }
+        />
       </section>
     </>
   )

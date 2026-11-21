@@ -175,6 +175,7 @@ function TradesView({ title, bookId, books, live, watchlist, onToggleWatch, onSc
 // Remounted per tab + scope (key), so each keeps its own column layout, sort and filters
 function TradesTable({ tab, bookId, limit, bookNames, live, watchlist, onSelect, onToggleWatch }) {
   const [pageSize, setPageSize] = usePersistentState('blotter.trades.pageSize', PAGE_SIZE_OPTIONS[0])
+  const [compact, setCompact] = usePersistentState('blotter.trades.compact', false)
   const [page, setPage] = useState(1)
   const storageKey = `blotter.trades.${tab}`
   const status = TABS.find((t) => t.key === tab).status
@@ -222,15 +223,15 @@ function TradesTable({ tab, bookId, limit, bookNames, live, watchlist, onSelect,
       { key: 'asset_class', label: 'Asset Class', sortable: true, filter: 'prefix', className: (row) => `tint-cell tag-color--${tagOf(row.asset_class)}` },
       { key: 'symbol', label: 'Symbol', sortable: true, filter: 'text', className: (row) => `symbol-cell tag-color--${tagOf(row.asset_class)} tag-shade--${shadeOf(row.symbol)}` },
       { key: 'side', label: 'Side', sortable: true, filter: 'prefix', className: sideClass },
-      { key: 'quantity', label: 'Qty', sortable: true, className: 'num-cell' },
-      { key: 'trade_price', label: 'Trade Price', sortable: true, className: 'num-cell' },
+      { key: 'quantity', label: 'Qty', sortable: true, numeric: true },
+      { key: 'trade_price', label: 'Trade Price', sortable: true, numeric: true },
       { key: 'trade_currency', label: 'Ccy', sortable: true },
       { key: 'status', label: 'Status', sortable: true, filter: 'prefix', className: statusClass },
-      { key: 'fair_value', label: 'Fair Value', format: formatNumber, sortable: true, className: isLive ? 'num-cell' : 'num-cell is-stale' },
-      { key: 'unrealized_pnl', label: 'Unrealized', format: formatNumber, sortable: true, className: (row) => `num-cell ${liveCell(row.unrealized_pnl) ?? ''}` },
-      { key: 'realized_pnl', label: 'Realized', format: formatNumber, sortable: true, className: (row) => `num-cell ${pnlClass(row.realized_pnl) ?? ''}` },
-      { key: 'total_pnl', label: 'Total PnL', format: formatNumber, sortable: true, className: (row) => `num-cell ${liveCell(row.total_pnl) ?? ''}` },
-      { key: 'close_price', label: 'Close Price', sortable: true, className: 'num-cell' },
+      { key: 'fair_value', label: 'Fair Value', format: formatNumber, sortable: true, numeric: true, className: isLive ? undefined : 'is-stale' },
+      { key: 'unrealized_pnl', label: 'Unrealized', format: formatNumber, sortable: true, numeric: true, className: (row) => liveCell(row.unrealized_pnl) },
+      { key: 'realized_pnl', label: 'Realized', format: formatNumber, sortable: true, numeric: true, className: (row) => pnlClass(row.realized_pnl) },
+      { key: 'total_pnl', label: 'Total PnL', format: formatNumber, sortable: true, numeric: true, className: (row) => liveCell(row.total_pnl) },
+      { key: 'close_price', label: 'Close Price', sortable: true, numeric: true },
       { key: 'closed_at', label: 'Closed At', format: formatDateTime, sortable: true },
       { key: 'close_reason', label: 'Close Reason', sortable: true },
       { key: 'settlement', label: 'Settlement', sortable: true, className: settlementClass },
@@ -281,10 +282,14 @@ function TradesTable({ tab, bookId, limit, bookNames, live, watchlist, onSelect,
             {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
+        <button className={compact ? 'btn btn--primary' : 'btn'} aria-pressed={compact} onClick={() => setCompact(!compact)}>
+          Compact
+        </button>
         <ColumnSettings layout={layout} />
       </div>
       <QueryNotice what="trades" service="Blotter Service" error={trades.error} updatedAt={trades.updatedAt} />
       <DataTable
+        compact={compact}
         columns={layout.columns}
         rows={pageRows}
         rowKey="trade_id"
@@ -305,14 +310,6 @@ function TradesTable({ tab, bookId, limit, bookNames, live, watchlist, onSelect,
                   : 'No trades yet. Start the generator in the Trade Generation view.'
         }
       />
-      <p className="muted">
-        {tab === 'WATCHLIST'
-          ? `${watchlist.length} trades on the watchlist (shared by all trade windows). `
-          : `Showing up to the ${limit} most recent ${status ? status.toLowerCase() + ' ' : ''}trades. `}
-        {isLive
-          ? 'Fair value and PnL update live from the valuation stream.'
-          : 'Live valuation is unavailable – fair value and PnL are frozen at their last known values.'}
-      </p>
     </>
   )
 }

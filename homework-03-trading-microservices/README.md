@@ -32,7 +32,7 @@ and recoveries are shipped to `AuditLogs` with the shared file-based shipper.
 ## Book alpha & beta
 
 `pricing-service` computes alpha and beta **per book** (not per trade) in `app/book_metrics.py` and serves them
-on `GET /book-metrics`. The frontend shows them in the Pricing view (Book metrics) and in the Blotter books table.
+on `GET /book-metrics`. The frontend shows them only in the Pricing view (Book risk metrics).
 
 ```
 beta  = covariance(book_returns, benchmark_returns) / variance(benchmark_returns)
@@ -67,7 +67,7 @@ How the series are built:
   returns noisy;
 - **rolling window**: last `ALPHA_BETA_WINDOW = 100` observations per book; alpha/beta are shown once the window
   is full (100 observations, ~17 min at 10 s ticks) and the benchmark variance is non-zero;
-- alpha is a mean return **per observation** (shown in basis points), not annualized;
+- alpha is a mean return **per observation** (shown in %), not annualized;
 - series live in memory - a pricing-service restart starts a new window.
 
 | Variable | Default |

@@ -15,6 +15,9 @@ const kindOf = (status) => {
   return 'error'
 }
 
+// A hung backend must not hold one of the browser's ~6 connections per host forever
+const REQUEST_TIMEOUT_MS = 15_000
+
 async function request(method, url, body) {
   let res
   try {
@@ -22,9 +25,11 @@ async function request(method, url, body) {
       method,
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
-  } catch {
-    throw new ApiError('Service unreachable', { kind: 'unavailable' })
+  } catch (err) {
+    const message = err.name === 'TimeoutError' ? 'Service not responding (timeout)' : 'Service unreachable'
+    throw new ApiError(message, { kind: 'unavailable' })
   }
   // 204 has no body; Bottle's own 500 page is HTML, not JSON
   const data = res.status === 204 ? null : await res.json().catch(() => null)

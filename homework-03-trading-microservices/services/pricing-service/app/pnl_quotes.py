@@ -50,6 +50,7 @@ class PnLService(ABC):
         """One-time realized PnL of closed, unsettled trades; each valuation is stored and settled right away"""
         results = []
         for data in self.iter_closed():
+            data["valuation_status"] = "SETTLED"
             try:
                 self.valuation_engine.settle_trade(data)
             except SQLAlchemyError:
@@ -134,6 +135,7 @@ class PnLService(ABC):
     def _valuation(self, trade, fair_value, unrealized_pnl=0.0, realized_pnl=0.0):
         """Valuation event - contract with blotter-service and frontend, keep field names"""
         return {
+            "event_type": "valuation_update",
             "trade_id": trade["trade_id"],
             "book_id": trade["book_id"],
             "asset_class": self.asset_class,
@@ -143,6 +145,8 @@ class PnLService(ABC):
             "realized_pnl": realized_pnl,
             "total_pnl": unrealized_pnl + realized_pnl,
             "currency": trade["trade_currency"],
+            "valuation_status": "LIVE",
+            "created_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         }
 
 
