@@ -4,6 +4,8 @@ from typing import NamedTuple, Optional
 
 import structlog
 
+from validation import normalize_open_trade
+
 
 class ActionResult(NamedTuple):
     outcome: str
@@ -55,6 +57,7 @@ class TradeActionProcessor:
 
     def open_trade(self, action):
         """Validate and add a new trade to the repository"""
+        action = normalize_open_trade(action)
         try:
             self.validation.validate_open_trade(action)
         except ValueError as e:

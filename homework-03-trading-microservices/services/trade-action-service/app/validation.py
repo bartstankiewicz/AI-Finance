@@ -1,4 +1,5 @@
 import math
+from datetime import datetime, timezone
 
 import structlog
 
@@ -9,6 +10,26 @@ IRS_SIDE_BY_DIRECTION = {"PAY_FIXED": "BUY", "RECEIVE_FIXED": "SELL"}
 IRS_PAYMENTS_PER_YEAR = (1, 2, 4, 12)
 IRS_MAX_MATURITY_YEARS = 10
 IRS_FIXED_RATE_RANGE = (-0.05, 0.20)
+OPEN_TRADE_REQUIRED_FIELDS = ("asset_class", "book_id", "symbol", "instrument_id", "quantity", "trade_price", "trade_currency")
+# Market-data option tick symbol convention (EUOptionMarketDataGenerator)
+OPTION_SYMBOL_SUFFIX = "_EU_OPTION"
+
+
+def option_symbol(underlying_symbol):
+    return f"{underlying_symbol}{OPTION_SYMBOL_SUFFIX}"
+
+
+def normalize_open_trade(action):
+    """Copy of an OPEN_TRADE action with field aliases and derivable fields filled in"""
+    action = dict(action)
+    if action.get("trade_currency") is None and action.get("currency") is not None:
+        action["trade_currency"] = action["currency"]
+    action.setdefault("trade_date", datetime.now(timezone.utc).isoformat())
+    if action.get("asset_class") == "EUROPEAN_OPTION" and action.get("underlying_symbol"):
+        underlying = action["underlying_symbol"]
+        action.setdefault("symbol", option_symbol(underlying))
+        action.setdefault("instrument_id", f"{underlying}_{action.get('option_type')}_{action.get('strike')}_{action.get('maturity_years')}Y")
+    return action
 
 
 class TradeActionValidation:
@@ -36,6 +57,10 @@ class TradeActionValidation:
 
         if action.get("action_type") != "OPEN_TRADE":
             self.reject_trade(action, f"Invalid action_type for opening trade: {action.get('action_type')}. Must be 'OPEN_TRADE'")
+
+        for field in OPEN_TRADE_REQUIRED_FIELDS:
+            if action.get(field) is None:
+                self.reject_trade(action, f"Missing required field: {field}")
 
         if action.get("asset_class") == "EUROPEAN_OPTION":
             self.validate_option_fields(action)
@@ -89,8 +114,9 @@ class TradeActionValidation:
         if action["strike"] <= 0 or action["maturity_years"] <= 0:
             self.reject_trade(action, "strike and maturity_years must be positive")
 
-        if not action.get("symbol"):
-            self.reject_trade(action, "Missing required option field: symbol (option market data symbol)")
+        expected_symbol = option_symbol(action["underlying_symbol"])
+        if action["symbol"] != expected_symbol:
+            self.reject_trade(action, f"symbol {action['symbol']} does not match underlying_symbol (expected {expected_symbol})")
 
     def validate_close_trade(self, action):
         """Validate the action data for closing a trade"""

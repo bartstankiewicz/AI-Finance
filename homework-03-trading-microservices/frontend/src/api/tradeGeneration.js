@@ -14,3 +14,5 @@ export const getGeneratorConfigs = () => getJson(`${BASE}/configs`)
 
 // Empty / null fields are left unchanged by the backend
 export const updateGeneratorConfigs = (configs) => postJson(`${BASE}/configs`, configs)
+
+export const openGeneratedActionsStream = () => new EventSource(`${BASE}/actions/stream`)

@@ -1,9 +1,10 @@
 from bottle import Bottle, request, response
 
 class TradeGeneratorApi(Bottle):
-    def __init__(self, action_client):
+    def __init__(self, action_client, publisher):
         super().__init__()
         self.generation_status = action_client
+        self.publisher = publisher
         self.route('/health', method='GET', callback=self.health)
         self.route('/generate-once', method='POST', callback=self.generate_once)
         self.route('/start', method='POST', callback=self.start)
@@ -11,6 +12,7 @@ class TradeGeneratorApi(Bottle):
         self.route('/status', method='GET', callback=self.status)
         self.route('/configs', method='GET', callback=self.get_configs)
         self.route('/configs', method='POST', callback=self.configs)
+        self.route('/actions/stream', method='GET', callback=self.actions_stream)
 
     def health(self):
         """Health check requested"""
@@ -59,3 +61,9 @@ class TradeGeneratorApi(Bottle):
             response.status = 400
             return {"error": str(e)}
         return {"message": "Trade generation service configurations updated", "configs": configs}
+
+    def actions_stream(self):
+        """SSE stream of pushed trade actions with their outcome"""
+        response.content_type = "text/event-stream"
+        response.set_header("Cache-Control", "no-cache")
+        return self.publisher.stream_events()

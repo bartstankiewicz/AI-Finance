@@ -77,6 +77,8 @@ class Valuations(Base):
     currency: Mapped[str] = mapped_column(Text, nullable=False)
     market_data_reference: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     valuation_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    alpha: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
+    beta: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 

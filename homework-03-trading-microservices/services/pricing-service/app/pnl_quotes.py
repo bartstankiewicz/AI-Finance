@@ -46,11 +46,15 @@ class PnLService(ABC):
         """Unrealized PnL of all active trades; returns a list so the work runs in the (executor) thread calling it"""
         return list(self.iter_active())
 
-    def calculate_closed(self):
-        """One-time realized PnL of closed, unsettled trades; each valuation is stored and settled right away"""
+    def calculate_closed(self, alpha_beta_by_book=None):
+        """One-time realized PnL of closed, unsettled trades; each valuation is stored and settled right away.
+        alpha_beta_by_book: book_id -> (alpha, beta) stored with the final valuation.
+        """
+        alpha_beta_by_book = alpha_beta_by_book or {}
         results = []
         for data in self.iter_closed():
             data["valuation_status"] = "SETTLED"
+            data["alpha"], data["beta"] = alpha_beta_by_book.get(data["book_id"], (None, None))
             try:
                 self.valuation_engine.settle_trade(data)
             except SQLAlchemyError:
@@ -226,11 +230,19 @@ class OptionsPnLService(PnLService):
     curve_name = "USD_YIELD"
     seconds_per_year = 365.0 * 24 * 3600
 
-    def get_market_data(self, symbol):
+    def market_data_key(self, trade):
+        return trade["symbol"], trade["underlying_symbol"]
+
+    def get_market_data(self, key):
+        symbol, underlying_symbol = key
         option_tick = self.valuation_engine.get_current_tick(symbol)
         if not option_tick:
             return None
-        underlying = self.valuation_engine.get_current_tick(option_tick["underlying_symbol"])
+        if option_tick.get("underlying_symbol") != underlying_symbol:
+            self.log.warning("option_underlying_mismatch", symbol=symbol, trade_underlying=underlying_symbol,
+                             tick_underlying=option_tick.get("underlying_symbol"))
+            return None
+        underlying = self.valuation_engine.get_current_tick(underlying_symbol)
         curve = self.valuation_engine.get_curve(self.curve_name)
         if not (underlying and curve):
             return None
@@ -396,5 +408,5 @@ class PnLServices:
     def calculate_active(self, asset_class):
         return self.services[asset_class].calculate_active()
 
-    def calculate_closed_positions(self, asset_class):
-        return self.services[asset_class].calculate_closed()
+    def calculate_closed_positions(self, asset_class, alpha_beta_by_book=None):
+        return self.services[asset_class].calculate_closed(alpha_beta_by_book)

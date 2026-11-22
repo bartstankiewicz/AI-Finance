@@ -182,6 +182,8 @@ class Persistence:
             total_pnl=data.get("total_pnl", 0),
             currency=data.get("currency", "USD"),
             market_data_reference=data.get("market_data_reference"),
+            alpha=data.get("alpha"),
+            beta=data.get("beta"),
             valuation_payload=data
         )
 
@@ -287,5 +289,7 @@ class Persistence:
             "realized_pnl": float(record.realized_pnl),
             "total_pnl": float(record.total_pnl),
             "currency": record.currency,
+            "alpha": float(record.alpha) if record.alpha is not None else None,
+            "beta": float(record.beta) if record.beta is not None else None,
             "valuation_status": (record.valuation_payload or {}).get("valuation_status"),
         }

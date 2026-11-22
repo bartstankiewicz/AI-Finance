@@ -1,5 +1,6 @@
 import json
 import urllib.request
+from datetime import datetime, timezone
 import structlog
 import threading
 from config import TRADE_ACTION_URL, GENERATION_INTERVAL, TRADE_OUT_PROBABILITY
@@ -47,7 +48,8 @@ CONFIG_PARSERS = {
 
 
 class TradeGeneratorActionClient:
-    def __init__(self):
+    def __init__(self, publisher):
+        self.publisher = publisher
         self.lock = threading.Lock()
         self.running = False
         self.count = 0
@@ -62,6 +64,7 @@ class TradeGeneratorActionClient:
         """Push a trade to the trade-action-service, unless generation is stopped"""
         if not self.push():
             return
+        error = None
         try:
             request = urllib.request.Request(
                 url=TRADE_ACTION_URL,
@@ -73,9 +76,17 @@ class TradeGeneratorActionClient:
                 if response.status == 202:
                     self.log.info("trade_pushed", client_request_id=trade_data.get("client_request_id"))
                 else:
+                    error = f"HTTP {response.status}"
                     self.log.error("failed_to_push_trade", client_request_id=trade_data.get("client_request_id"), status=response.status)
-        except Exception:
+        except Exception as e:
+            error = str(e) or type(e).__name__
             self.log.exception("error_pushing_trade")
+        self.publisher.publish({
+            **trade_data,
+            "outcome": "FAILED" if error else "SENT",
+            "error": error,
+            "pushed_at": datetime.now(timezone.utc).isoformat(),
+        })
 
 
     def push_trade_batch(self):

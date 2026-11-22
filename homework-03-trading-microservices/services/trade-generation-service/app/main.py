@@ -20,6 +20,7 @@ from generator import (
     IRSTradeGenerator,
 )
 from action_client import TradeGeneratorActionClient
+from action_publisher import ActionPublisher
 from book_client import TradeGeneratorBookClient
 from market_data_client import MarketDataClient
 from blotter_client import TradeGeneratorBlotterClient
@@ -48,10 +49,11 @@ def generation_loop(generator, action_client, stop):
 if __name__ == '__main__':
     configure_logging(SERVICE_NAME)
     stop = threading.Event()
-    action_client = TradeGeneratorActionClient()
+    publisher = ActionPublisher()
+    action_client = TradeGeneratorActionClient(publisher)
     book_client = TradeGeneratorBookClient()
     blotter_client = TradeGeneratorBlotterClient()
-    app = TradeGeneratorApi(action_client)
+    app = TradeGeneratorApi(action_client, publisher)
     market_data_client = MarketDataClient()
     market_data_client.start()
     trade_generators = [
