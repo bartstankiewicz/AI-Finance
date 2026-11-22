@@ -1,0 +1,20 @@
+// Colors are CSS variables so the theme can change at runtime - palettes live in _themes.scss
+$color-bg: var(--color-bg);
+$color-text: var(--color-text);
+$color-accent: var(--color-accent);
+$color-surface: var(--color-surface);
+$color-surface-2: var(--color-surface-2);
+$color-border: var(--color-border);
+$color-muted: var(--color-muted);
+$color-up: var(--color-up);
+$color-down: var(--color-down);
+$color-warn: var(--color-warn);
+$color-info: var(--color-info);
+$color-alert: var(--color-alert);
+
+$radius: 10px;
+$radius-lg: 16px;
+$gap: 16px;
+
+// Classic sans-serif faces with full Polish glyphs and a plain 0 (no dot/slash like mono fonts)
+$font-family: 'Segoe UI', 'Helvetica Neue', Arial, 'Liberation Sans', sans-serif;

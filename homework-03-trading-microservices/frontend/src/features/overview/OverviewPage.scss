@@ -1,0 +1,29 @@
+@use '../../styles/variables' as *;
+
+// Overall verdict banner - the colored edge is readable at a glance
+.system-health {
+  display: flex;
+  align-items: flex-start;
+  gap: $gap;
+  padding: $gap;
+  border-left: 4px solid $color-muted;
+
+  &--up { border-left-color: $color-up; }
+  &--warn { border-left-color: $color-warn; }
+  &--down { border-left-color: $color-down; }
+
+  .status-badge {
+    margin-top: 3px;
+  }
+
+  &__title {
+    font-size: 1.1rem;
+  }
+
+  &__issues {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    color: $color-muted;
+    font-size: 0.85rem;
+  }
+}

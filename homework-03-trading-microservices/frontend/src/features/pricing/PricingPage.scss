@@ -1,0 +1,22 @@
+@use '../../styles/variables' as *;
+
+.pricing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.valuation-search {
+  display: flex;
+  gap: 10px;
+  max-width: 520px;
+  padding: 8px;
+
+  &__input {
+    flex: 1;
+    border: none;
+  }
+}

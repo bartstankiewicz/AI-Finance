@@ -1,0 +1,47 @@
+@use '../../styles/variables' as *;
+
+.blotter-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $gap;
+
+  &--filters {
+    align-items: flex-end;
+    margin-bottom: $gap;
+  }
+}
+
+.blotter-filters,
+.trade-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: $gap;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: $color-muted;
+    font-size: 0.8rem;
+  }
+
+  .input {
+    min-width: 180px;
+  }
+}
+
+.trade-details__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h2 {
+    font-size: 1rem;
+  }
+}
+
+.pnl--down {
+  color: $color-down;
+}

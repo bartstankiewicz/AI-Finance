@@ -1,0 +1,133 @@
+@use '../styles/variables' as *;
+
+// Wrapper carries border + rounded corners; only __scroll scrolls horizontally, so the footer stays in place
+.data-table {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid $color-border;
+  border-radius: $radius;
+  background: $color-surface;
+
+  // Scrolls both ways, so the sticky header stays visible in long tables
+  &__scroll {
+    max-height: 70vh;
+    overflow: auto;
+  }
+
+  &__footer {
+    border-top: 1px solid $color-border;
+    background: $color-surface-2;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  th,
+  td {
+    padding: 10px 14px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  th.num-cell,
+  td.num-cell {
+    text-align: right;
+  }
+
+  &--compact {
+    th,
+    td {
+      padding: 4px 8px;
+    }
+
+    table {
+      font-size: 0.8rem;
+    }
+  }
+
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: $color-surface-2;
+    color: $color-muted;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  &__sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+
+    &:hover {
+      color: $color-text;
+    }
+  }
+
+  th[draggable='true'] {
+    cursor: grab;
+  }
+
+  // Pinned (locked) columns - see useColumnLayout
+  th.is-pinned {
+    color: $color-accent;
+  }
+
+  &__sort-icon {
+    opacity: 0.35;
+    font-size: 0.7rem;
+
+    &.is-active {
+      opacity: 1;
+      color: $color-accent;
+    }
+  }
+
+  td {
+    border-top: 1px solid $color-border;
+
+    &.data-table__empty {
+      color: $color-muted;
+      text-align: center;
+    }
+
+    // Last known value that is no longer updating
+    &.is-stale {
+      color: $color-warn;
+      opacity: 0.7;
+    }
+
+    // Price moved up / down since the previous tick
+    &.is-up {
+      background: color-mix(in srgb, #{$color-up} 15%, transparent);
+      color: $color-up;
+    }
+
+    &.is-down {
+      background: color-mix(in srgb, #{$color-down} 15%, transparent);
+      color: $color-down;
+    }
+  }
+
+  td:first-child {
+    font-weight: 500;
+  }
+
+  tbody tr:hover td {
+    background: $color-surface-2;
+  }
+}

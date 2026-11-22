@@ -1,3 +1,14 @@
+x-service-logs: &service-logs
+  # Each service writes <service>/<service>.log (+ checkpoint) here; survives container restarts
+  - ./logs:/var/log/trading
+
+# Ready = /health answers (HTTP server started after DB-dependent startup); images have Python but no curl
+x-healthcheck-timing: &healthcheck-timing
+  interval: 5s
+  timeout: 5s
+  retries: 12
+  start_period: 10s
+
 services:
 
   db:
@@ -30,10 +41,15 @@ services:
     build:
       context: .
       dockerfile: services/market-data-service/Dockerfile
+    restart: unless-stopped
     ports:
       - "8001:8001"
+    volumes: *service-logs
     environment:
       - DATABASE_URL=postgresql+psycopg://trading:trading@db:5432/trading
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      <<: *healthcheck-timing
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -42,14 +58,19 @@ services:
     build:
       context: .
       dockerfile: services/pricing-service/Dockerfile
+    restart: unless-stopped
     ports:
       - "8002:8002"
+    volumes: *service-logs
     environment:
       - STREAM_URL=http://market-data-service:8001/stream
       - DATABASE_URL=postgresql+psycopg://trading:trading@db:5432/trading
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
+      <<: *healthcheck-timing
     depends_on:
       market-data-service:
-        condition: service_started
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
 
@@ -57,10 +78,15 @@ services:
     build:
       context: .
       dockerfile: services/books-service/Dockerfile
+    restart: unless-stopped
     ports:
       - "8004:8004"
+    volumes: *service-logs
     environment:
       - DATABASE_URL=postgresql+psycopg://trading:trading@db:5432/trading
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health', timeout=3)"]
+      <<: *healthcheck-timing
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -69,14 +95,19 @@ services:
     build:
       context: .
       dockerfile: services/blotter-service/Dockerfile
+    restart: unless-stopped
     ports:
       - "8006:8006"
+    volumes: *service-logs
     environment:
       - STREAM_URL=http://pricing-service:8002/valuation-stream
       - DATABASE_URL=postgresql+psycopg://trading:trading@db:5432/trading
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8006/health', timeout=3)"]
+      <<: *healthcheck-timing
     depends_on:
       pricing-service:
-        condition: service_started
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
 
@@ -84,10 +115,15 @@ services:
     build:
       context: .
       dockerfile: services/trade-action-service/Dockerfile
+    restart: unless-stopped
     ports:
       - "8008:8008"
+    volumes: *service-logs
     environment:
       - DATABASE_URL=postgresql+psycopg://trading:trading@db:5432/trading
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/health', timeout=3)"]
+      <<: *healthcheck-timing
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -96,27 +132,39 @@ services:
     build:
       context: .
       dockerfile: services/trade-generation-service/Dockerfile
+    restart: unless-stopped
     ports:
       - "8007:8007"
+    volumes: *service-logs
     environment:
       - STREAM_URL=http://market-data-service:8001/stream
       - GET_BOOKS_URL=http://books-service:8004/books
       - GET_ACTIVE_TRADES_URL=http://blotter-service:8006/trades?status=ACTIVE&limit=20
       - TRADE_ACTION_URL=http://trade-action-service:8008/trade-actions
       - DATABASE_URL=postgresql+psycopg://trading:trading@db:5432/trading
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/health', timeout=3)"]
+      <<: *healthcheck-timing
     depends_on:
-      - market-data-service
-      - books-service
-      - blotter-service
-      - trade-action-service
+      market-data-service:
+        condition: service_healthy
+      books-service:
+        condition: service_healthy
+      blotter-service:
+        condition: service_healthy
+      trade-action-service:
+        condition: service_healthy
 
   monitoring-service:
     build:
       context: .
       dockerfile: services/monitoring_service/Dockerfile
+    restart: unless-stopped
     ports:
       - "8003:8003"
+    volumes: *service-logs
     environment:
+      - DATABASE_URL=postgresql+psycopg://trading:trading@db:5432/trading
       - MARKET_DATA_HEALTH_URL=http://market-data-service:8001/health
       - PRICING_HEALTH_URL=http://pricing-service:8002/health
       - BOOKS_HEALTH_URL=http://books-service:8004/health

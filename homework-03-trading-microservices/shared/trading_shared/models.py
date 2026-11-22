@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Text, Numeric, DateTime, Boolean, ForeignKey
+from sqlalchemy import BigInteger, Text, Numeric, DateTime, Boolean, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from datetime import datetime, timezone
@@ -45,6 +45,15 @@ class Trades(Base):
     is_settled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source: Mapped[str] = mapped_column(Text, nullable=False, default="GENERATED")
     client_request_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True)
+    underlying_symbol: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    option_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    strike: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
+    maturity_years: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
+    volatility: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
+    notional: Mapped[Optional[int]] = mapped_column(Numeric, nullable=True)
+    fixed_rate: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
+    payments_per_year: Mapped[Optional[int]] = mapped_column(Numeric, nullable=True)
+    direction: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     trade_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -52,6 +61,8 @@ class Trades(Base):
 
 class Valuations(Base):
     __tablename__ = "Valuations"
+    # Latest valuation per trade (blotter /books/summary, trade details) and per-trade history
+    __table_args__ = (Index("ix_valuations_trade_id_valuation_time", "trade_id", "valuation_time"),)
 
     valuation_id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trade_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("Trades.trade_id"), nullable=False)
@@ -66,6 +77,8 @@ class Valuations(Base):
     currency: Mapped[str] = mapped_column(Text, nullable=False)
     market_data_reference: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     valuation_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    alpha: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
+    beta: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 

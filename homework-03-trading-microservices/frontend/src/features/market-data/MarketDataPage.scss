@@ -1,0 +1,25 @@
+@use '../../styles/variables' as *;
+
+// Segmented asset class switch above the ticks table
+.asset-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid $color-border;
+  border-radius: $radius;
+  background: $color-surface;
+
+  .btn:not(.btn--primary) {
+    border-color: transparent;
+    background: none;
+  }
+}
+
+.ticks-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: $gap;
+}

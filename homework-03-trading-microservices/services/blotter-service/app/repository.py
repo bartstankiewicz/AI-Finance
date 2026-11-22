@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
@@ -74,7 +75,7 @@ class BlotterRepository:
 
             return results
 
-    def get_trades(self, limit=20, book_id=None, asset_class=None, status=None, symbol=None):
+    def get_trades(self, limit=20, book_id=None, asset_class=None, status=None, symbol=None, trade_ids=None):
         """Get trades with optional filters"""
         results = []
         with SessionFactory() as session:
@@ -88,13 +89,18 @@ class BlotterRepository:
                 query = query.filter(Trades.status == status)
             if symbol:
                 query = query.filter(Trades.symbol == symbol)
+            if trade_ids:
+                query = query.filter(Trades.trade_id.in_(trade_ids))
 
             records = query.limit(limit).all()
+
+            missing = [record.trade_id for record in records if self.latest_valuations_cache.get(str(record.trade_id)) is None]
+            stored = self._latest_stored_valuations(session, missing)
 
             for record in records:
 
                 trade_id = str(record.trade_id)
-                cached = self.latest_valuations_cache.get(trade_id)
+                cached = self.latest_valuations_cache.get(trade_id) or stored.get(trade_id)
 
                 trade = {
                     "trade_id": str(record.trade_id),
@@ -107,6 +113,10 @@ class BlotterRepository:
                     "trade_currency": record.trade_currency,
                     "status": record.status,
                     "close_price": float(record.close_price) if record.close_price is not None else None,
+                    "trade_date": record.trade_date.isoformat() if record.trade_date else None,
+                    "closed_at": record.closed_at.isoformat() if record.closed_at else None,
+                    "close_reason": record.close_reason,
+                    "is_settled": record.is_settled,
                     "fair_value": float(cached["fair_value"]) if cached else 0.0,
                     "unrealized_pnl": float(cached["unrealized_pnl"]) if cached else 0.0,
                     "realized_pnl": float(cached["realized_pnl"]) if cached else 0.0,
@@ -115,6 +125,33 @@ class BlotterRepository:
                 results.append(trade)
 
         return results
+
+    @staticmethod
+    def _latest_stored_valuations(session, trade_ids):
+        """Latest persisted valuation per trade - fallback when the live cache has none (e.g. after a restart)"""
+        if not trade_ids:
+            return {}
+
+        latest = (
+            session.query(Valuations.trade_id, func.max(Valuations.valuation_time).label("max_time"))
+            .filter(Valuations.trade_id.in_(trade_ids))
+            .group_by(Valuations.trade_id)
+            .subquery()
+        )
+        rows = session.query(Valuations).join(
+            latest,
+            (Valuations.trade_id == latest.c.trade_id) & (Valuations.valuation_time == latest.c.max_time)
+        ).all()
+
+        return {
+            str(row.trade_id): {
+                "fair_value": row.fair_value,
+                "unrealized_pnl": row.unrealized_pnl,
+                "realized_pnl": row.realized_pnl,
+                "total_pnl": row.total_pnl,
+            }
+            for row in rows
+        }
 
     def get_trades_by_id(self, trade_id):
         """Get trade details by trade_id"""
@@ -212,3 +249,21 @@ class BlotterRepository:
                 })
 
         return {"audit_logs": results}
+
+    def get_recent_errors(self, minutes=5, limit=20):
+        """ERROR audit logs from the last `minutes` (newest first) and their total count"""
+        since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        with SessionFactory() as session:
+            query = session.query(AuditLogs).filter(AuditLogs.severity == "ERROR", AuditLogs.created_at >= since)
+            count = query.count()
+            records = query.order_by(AuditLogs.created_at.desc()).limit(limit).all()
+            errors = [{
+                "audit_id": str(log.audit_id),
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "service_name": log.service_name,
+                "event_type": log.event_type,
+                "entity_id": log.entity_id,
+                "message": log.message,
+            } for log in records]
+
+        return {"count": count, "minutes": minutes, "errors": errors}
